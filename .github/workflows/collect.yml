@@ -2,8 +2,7 @@ name: collect-k200
 
 on:
   schedule:
-    - cron: "17 7 * * 1-5"   # KST 16:17 본수집 (UTC 07:17)
-    - cron: "37 7 * * 1-5"   # KST 16:37 검증/복구
+    - cron: "50 6 * * 1-5"   # KST 15:50 일 1회 (UTC 06:50, 월-금)
   workflow_dispatch:
     inputs:
       date:

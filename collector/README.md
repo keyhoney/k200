@@ -26,7 +26,7 @@ python collector/collect.py --date 2026-10-12             # upsert
 ## GitHub Secrets
 
 `KIS_APP_KEY`, `KIS_APP_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-→ Actions `collect-k200` (KST 16:17 본수집 + 16:37 검증, 수동 dispatch 지원).
+→ Actions `collect-k200` (KST 15:50 일 1회, 수동 dispatch 지원).
 
 ## 테스트
 
