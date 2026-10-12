@@ -2,7 +2,8 @@ name: collect-k200
 
 on:
   schedule:
-    - cron: "50 6 * * 1-5"   # KST 15:50 일 1회 (UTC 06:50, 월-금)
+    - cron: "50 6 * * 1-5"   # KST 15:50 본수집 (UTC 06:50, 월-금)
+    - cron: "0 7 * * 1-5"    # KST 16:00 메우기 (UTC 07:00, upsert 멱등)
   workflow_dispatch:
     inputs:
       date:
@@ -11,6 +12,10 @@ on:
         default: ""
       dry_run:
         description: "true면 upsert 생략"
+        required: false
+        default: "false"
+      force:
+        description: "true면 주말/휴장일 스킵 무시"
         required: false
         default: "false"
 
@@ -33,4 +38,5 @@ jobs:
           ARGS=""
           if [ -n "${{ inputs.date }}" ]; then ARGS="$ARGS --date ${{ inputs.date }}"; fi
           if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          if [ "${{ inputs.force }}" = "true" ]; then ARGS="$ARGS --force"; fi
           python collector/collect.py $ARGS

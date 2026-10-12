@@ -22,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
+from krx_holidays import is_krx_holiday
+
 KST = timezone(timedelta(hours=9))
 KIS_BASE = "https://openapi.koreainvestment.com:9443"
 TOKEN_URL = f"{KIS_BASE}/oauth2/tokenP"
@@ -249,7 +251,7 @@ def supa_upsert(base: str, svc: str, table: str, rows: list[dict], on_conflict: 
     return {"status": r.status_code}
 
 
-def run(trading_date: str, dry_run: bool = False) -> int:
+def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     t0 = time.time()
     app_key = get_env("KIS_APP_KEY")
@@ -261,10 +263,17 @@ def run(trading_date: str, dry_run: bool = False) -> int:
 
     # 평일 체크 (KST)
     wd = datetime.strptime(trading_date, "%Y-%m-%d").weekday()
-    if wd >= 5:
+    if not force and wd >= 5:
         LOG.info("skip weekend %s", trading_date)
         if not dry_run:
             record_run(sb_url, sb_svc, trading_date, None, "SKIPPED", 0, 0, "weekend")
+        return 0
+
+    # KRX 휴장일 체크 (공휴일 + 12/31 연말휴장)
+    if not force and is_krx_holiday(trading_date):
+        LOG.info("skip KRX holiday %s", trading_date)
+        if not dry_run:
+            record_run(sb_url, sb_svc, trading_date, None, "SKIPPED", 0, 0, "krx holiday")
         return 0
 
     token = kis_token(app_key, app_secret)
@@ -365,9 +374,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=datetime.now(KST).strftime("%Y-%m-%d"))
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="주말/KRX 휴장일 스킵을 무시하고 수집 시도")
     a = ap.parse_args(argv)
     try:
-        return run(a.date, a.dry_run)
+        return run(a.date, a.dry_run, a.force)
     except SystemExit as e:
         print(mask(str(e)), file=sys.stderr)
         return 1

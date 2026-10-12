@@ -5,6 +5,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from collect import normalize_rows, sort_dedup, valid_bar, select_front_month, parse_master_text
+from krx_holidays import is_krx_holiday
 
 
 def test_normalize_and_dedup():
@@ -57,3 +58,13 @@ def test_master_parse_real_format():
     syms = [c["symbol"] for c in out]
     assert "A01612" in syms and "A01703" in syms
     assert "A04610" not in syms  # VKOSPI 제외
+
+
+def test_krx_holiday():
+    assert is_krx_holiday("2026-10-09")      # 한글날
+    assert is_krx_holiday("2026-09-24")      # 추석 연휴
+    assert is_krx_holiday("2026-12-31")      # 연말휴장 (공휴일 아님)
+    assert is_krx_holiday("2026-06-03")      # 대통령 선거일
+    assert is_krx_holiday("2027-01-01")      # 신정
+    assert not is_krx_holiday("2026-10-12")  # 월요일 개장일
+    assert not is_krx_holiday("2027-01-04")  # 월요일 개장일

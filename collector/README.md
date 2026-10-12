@@ -26,7 +26,9 @@ python collector/collect.py --date 2026-10-12             # upsert
 ## GitHub Secrets
 
 `KIS_APP_KEY`, `KIS_APP_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-→ Actions `collect-k200` (KST 15:50 일 1회, 수동 dispatch 지원).
+→ Actions `collect-k200` (KST 15:50 본수집 + 16:00 메우기, 수동 dispatch 지원).
+
+주말·KRX 휴장일(공휴일 + 12/31 연말휴장)은 자동 SKIPPED. `--force`로 무시 가능.
 
 ## 테스트
 
