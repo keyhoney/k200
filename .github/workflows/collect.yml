@@ -1,0 +1,37 @@
+name: collect-k200
+
+on:
+  schedule:
+    - cron: "17 7 * * 1-5"   # KST 16:17 본수집 (UTC 07:17)
+    - cron: "37 7 * * 1-5"   # KST 16:37 검증/복구
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "거래일 YYYY-MM-DD (KST, 비우면 오늘)"
+        required: false
+        default: ""
+      dry_run:
+        description: "true면 upsert 생략"
+        required: false
+        default: "false"
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r collector/requirements.txt
+      - name: Collect 1m bars
+        env:
+          KIS_APP_KEY: ${{ secrets.KIS_APP_KEY }}
+          KIS_APP_SECRET: ${{ secrets.KIS_APP_SECRET }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          ARGS=""
+          if [ -n "${{ inputs.date }}" ]; then ARGS="$ARGS --date ${{ inputs.date }}"; fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then ARGS="$ARGS --dry-run"; fi
+          python collector/collect.py $ARGS

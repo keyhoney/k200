@@ -1,0 +1,25 @@
+# Deps
+node_modules/
+.next/
+out/
+
+# Env (keys must never be committed)
+.env
+.env.local
+.env*.local
+supabase.txt
+
+# OS / logs
+.DS_Store
+Thumbs.db
+*.log
+
+# Tests
+test-results/
+playwright-report/
+coverage/
+.pytest_cache/
+collector/.cache/
+
+__pycache__/
+tsconfig.tsbuildinfo
