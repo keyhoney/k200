@@ -48,7 +48,6 @@ export async function getChartData(date: string): Promise<ChartData> {
         .eq("is_active", true);
       const rows = (contracts ?? []) as Array<{ id: number; symbol: string; contract_name: string; expiry_date: string }>;
       const front = rows.filter((c) => date <= c.expiry_date).sort((a, b) => (a.expiry_date < b.expiry_date ? -1 : 1))[0];
-      console.log(`[chartData] date=${date} contracts=${rows.length} front=${front?.symbol ?? "none"}`);
       if (front) {
         const [{ data: bars }, { data: trades }] = await Promise.all([
           sb
@@ -63,7 +62,6 @@ export async function getChartData(date: string): Promise<ChartData> {
             .eq("trading_date", date)
             .order("created_at", { ascending: true }),
         ]);
-        console.log(`[chartData] bars=${bars?.length ?? "err"} trades=${trades?.length ?? "err"}`);
         if (bars && bars.length > 0) {
           return {
             tradingDate: date,
@@ -99,8 +97,8 @@ export async function getChartData(date: string): Promise<ChartData> {
           };
         }
       }
-    } catch (e) {
-      console.error(`[chartData] supabase failed: ${e instanceof Error ? e.message : String(e)}`);
+    } catch {
+      // Supabase 미연결/빈 데이터 → DEMO 폴백
     }
   }
   return {
