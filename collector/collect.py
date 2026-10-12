@@ -152,11 +152,17 @@ FUT_CODE_RE = re.compile(r"^101[A-Z0-9]\d{2}$|^[A-Z0-9]{6,8}$")
 
 
 def parse_master_text(text: str) -> list[dict]:
-    """fo_idx_code_mts.mst 파싱. 코스피200 선물(101로 시작) 행 추출.
-    행 포맷이 변경될 수 있어 관대하게 파싱 후 101 prefix로 필터."""
+    """fo_idx_code_mts.mst 파싱. 코스피200 선물 행 추출.
+    실제 행 예: '1|A01612|KR4A016C0004|F 202612| |00000.00|1|2001|KOSPI200'
+    parts[1]=KIS 단축코드(FID_INPUT_ISCD용, 예 A01612=26년12월물), parts[3]=월물명.
+    만기일 정본은 Supabase futures_contracts이므로 여기서는 symbol 목록만 추출한다.
+    (주의: 101X12 형식은 구 차트앱 별칭으로 KIS API에 통하지 않는다.)"""
     out: list[dict] = []
     for line in text.splitlines():
         parts = [p.strip() for p in line.split("|")]
+        if len(parts) >= 4 and re.fullmatch(r"[A-Z]\d{5}", parts[1] or "") and "KOSPI200" in line:
+            out.append({"symbol": parts[1], "name": parts[3] or parts[1]})
+            continue
         if len(parts) < 4:
             # 고정폭 폴백: 코드 후보 탐색
             m = re.search(r"101[A-Z]\d{2}", line)

@@ -45,3 +45,15 @@ def test_master_parse_tolerant():
     text = "1|101X12|xxx|코스피200 선물 26.12|...|20261210|\n9|junk|line\n"
     out = parse_master_text(text)
     assert out and out[0]["symbol"] == "101X12"
+
+
+def test_master_parse_real_format():
+    text = (
+        "1|A01612|KR4A016C0004|F 202612| |00000.00|1|2001|KOSPI200\n"
+        "1|A01703|KR4A01730006|F 202703| |00000.00|2|2001|KOSPI200\n"
+        "7|A04610|KR4A046A0000|VKOSPI F 202610| |00000.00|1|0503|VKOSPI\n"
+    )
+    out = parse_master_text(text)
+    syms = [c["symbol"] for c in out]
+    assert "A01612" in syms and "A01703" in syms
+    assert "A04610" not in syms  # VKOSPI 제외
