@@ -13,6 +13,7 @@ export interface ChartTradeExecution {
   executedAt: string;
   price: number;
   quantity: number;
+  fee: number;
   memo?: string | null;
 }
 
@@ -58,7 +59,7 @@ export async function getChartData(date: string): Promise<ChartData> {
             .order("bar_time", { ascending: true }),
           sb
             .from("trades")
-            .select("id,direction,strategy_name,setup_grade,entry_reason,exit_reason,trade_executions(execution_type,executed_at,price,quantity,memo)")
+            .select("id,direction,strategy_name,setup_grade,entry_reason,exit_reason,trade_executions(execution_type,executed_at,price,quantity,fee,memo)")
             .eq("trading_date", date)
             .order("created_at", { ascending: true }),
         ]);
@@ -77,7 +78,7 @@ export async function getChartData(date: string): Promise<ChartData> {
             trades: ((trades ?? []) as Array<{
               id: string; direction: "LONG" | "SHORT"; strategy_name: string | null;
               setup_grade: string | null; entry_reason: string | null; exit_reason: string | null;
-              trade_executions: Array<{ execution_type: "ENTRY" | "EXIT"; executed_at: string; price: number; quantity: number; memo: string | null }>;
+              trade_executions: Array<{ execution_type: "ENTRY" | "EXIT"; executed_at: string; price: number; quantity: number; fee: number; memo: string | null }>;
             }>).map((t) => ({
               id: t.id,
               direction: t.direction,
@@ -90,6 +91,7 @@ export async function getChartData(date: string): Promise<ChartData> {
                 executedAt: e.executed_at,
                 price: Number(e.price),
                 quantity: e.quantity,
+                fee: Number(e.fee ?? 0),
                 memo: e.memo,
               })),
             })),

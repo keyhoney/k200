@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { calcTrade } from "@/lib/pnl";
+import { calcETFTrade, ETF_LABEL } from "@/lib/etf";
+import { formatKSTTime } from "@/lib/kst";
 
 interface Row {
   id: string;
   trading_date: string;
   direction: "LONG" | "SHORT";
-  strategy_name: string | null;
-  setup_grade: string | null;
-  rule_followed: boolean | null;
   trade_executions: Array<{ execution_type: "ENTRY" | "EXIT"; executed_at: string; price: number; quantity: number; fee: number }>;
 }
 
@@ -45,23 +43,26 @@ export default function TradesClient() {
       <div className="flex flex-wrap gap-2 items-end">
         <label className="text-xs">시작<input type="date" className="mt-1 rounded border px-2 py-1" value={from} onChange={(e) => setFrom(e.target.value)} /></label>
         <label className="text-xs">종료<input type="date" className="mt-1 rounded border px-2 py-1" value={to} onChange={(e) => setTo(e.target.value)} /></label>
-        <label className="text-xs">방향
+        <label className="text-xs">종목
           <select className="mt-1 rounded border px-2 py-1" value={direction} onChange={(e) => setDirection(e.target.value)}>
-            <option value="">전체</option><option value="LONG">롱</option><option value="SHORT">숏</option>
+            <option value="">전체</option><option value="LONG">레버리지</option><option value="SHORT">인버스2X</option>
           </select>
         </label>
-        <label className="text-xs">키워드<input className="mt-1 rounded border px-2 py-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="전략/메모" /></label>
+        <label className="text-xs">키워드<input className="mt-1 rounded border px-2 py-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="키워드" /></label>
         <button onClick={search} className="rounded bg-black px-3 py-1 text-white dark:bg-white dark:text-black">검색</button>
         <span className="text-xs text-zinc-500">{msg}</span>
       </div>
       <table className="w-full text-xs">
-        <thead><tr className="text-left border-b"><th>날짜</th><th>방향</th><th>전략</th><th>등급</th><th>순손익</th><th></th></tr></thead>
+        <thead><tr className="text-left border-b"><th>날짜</th><th>종목</th><th>순손익</th><th></th></tr></thead>
         <tbody>
           {rows.map((r) => {
-            const pnl = calcTrade(r.direction, r.trade_executions.map((e) => ({ type: e.execution_type, price: Number(e.price), quantity: e.quantity, fee: Number(e.fee) })), 250000);
+            const pnl = calcETFTrade(r.trade_executions.map((e) => ({ type: e.execution_type, price: Number(e.price), quantity: e.quantity, fee: Number(e.fee) })));
+            const firstExec = r.trade_executions[0];
+            const timeStr = firstExec ? formatKSTTime(new Date(firstExec.executed_at).getTime()) : "—";
             return (
               <tr key={r.id} className="border-b">
-                <td>{r.trading_date}</td><td>{r.direction}</td><td>{r.strategy_name ?? "—"}</td><td>{r.setup_grade ?? "—"}</td>
+                <td>{r.trading_date}<br/><span className="text-[10px] text-zinc-400">{timeStr}</span></td>
+                <td>{ETF_LABEL[r.direction] ?? r.direction}</td>
                 <td>{pnl.net.toLocaleString()}</td>
                 <td><Link className="underline" href={`/review/${r.trading_date}`}>차트로</Link></td>
               </tr>

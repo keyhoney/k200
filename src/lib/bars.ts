@@ -35,3 +35,24 @@ export function sortDedup(bars: Bar[]): Bar[] {
 export function isAscending(bars: Bar[]): boolean {
   return bars.every((b, i) => i === 0 || bars[i - 1].time < b.time);
 }
+
+// N분봉 합성 — 연속된 1분봉을 minutes분 버킷으로 묶어 OHLCV 재계산.
+// 버킷 경계는 epoch 기준 내림이며, 09:00 개장봉과 정렬됨 (09:00 KST=00:00 UTC).
+export function aggregateBars(bars: Bar[], minutes: number): Bar[] {
+  if (minutes <= 1) return [...bars];
+  const width = minutes * 60;
+  const out: Bar[] = [];
+  for (const b of bars) {
+    const bucket = Math.floor(b.time / width) * width;
+    const last = out[out.length - 1];
+    if (last && last.time === bucket) {
+      last.high = Math.max(last.high, b.high);
+      last.low = Math.min(last.low, b.low);
+      last.close = b.close;
+      last.volume += b.volume;
+    } else {
+      out.push({ time: bucket, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume });
+    }
+  }
+  return out;
+}

@@ -4,22 +4,53 @@ import { useState } from "react";
 
 interface Stats {
   overall: { count: number; wins: number; losses: number; winRate: number; net: number; profitFactor: number | null };
-  byDirection: Record<string, { count: number; net: number }>;
-  byStrategy: Record<string, { count: number; net: number }>;
-  byGrade: Record<string, { count: number; net: number }>;
-  byRule: Record<string, { count: number; net: number }>;
-  bySession: Record<string, { count: number; net: number }>;
-  insights: string[];
+  bySlot: Array<{ slot: string; lev: { count: number; net: number }; inv: { count: number; net: number } }>;
 }
 
-function Block({ title, data }: { title: string; data: Record<string, { count: number; net: number }> }) {
+function SlotTable({ rows }: { rows: Stats["bySlot"] }) {
+  const cell = (c: { count: number; net: number }) =>
+    c.count === 0 ? "—" : `${c.net.toLocaleString()}원 (${c.count})`;
+  const tot = (pick: (r: Stats["bySlot"][number]) => { count: number; net: number }) =>
+    rows.reduce(
+      (a, r) => ({ count: a.count + pick(r).count, net: a.net + pick(r).net }),
+      { count: 0, net: 0 },
+    );
+  const totLev = tot((r) => r.lev);
+  const totInv = tot((r) => r.inv);
+  const totAll = { count: totLev.count + totInv.count, net: totLev.net + totInv.net };
   return (
-    <div className="rounded border p-3 text-xs">
-      <h3 className="font-bold mb-2">{title}</h3>
-      {Object.entries(data).map(([k, v]) => (
-        <div key={k} className="flex justify-between"><span>{k} ({v.count})</span><span>{v.net.toLocaleString()}원</span></div>
-      ))}
-    </div>
+    <table className="w-full">
+      <thead>
+        <tr className="text-left border-b">
+          <th className="py-1">시간대</th>
+          <th className="text-right">레버리지</th>
+          <th className="text-right">인버스2X</th>
+          <th className="text-right">합계</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((r) => {
+          const count = r.lev.count + r.inv.count;
+          const net = r.lev.net + r.inv.net;
+          return (
+            <tr key={r.slot} className="border-b">
+              <td className="py-1">{r.slot}</td>
+              <td className="text-right">{cell(r.lev)}</td>
+              <td className="text-right">{cell(r.inv)}</td>
+              <td className="text-right font-semibold">{count === 0 ? "—" : `${net.toLocaleString()}원 (${count})`}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+      <tfoot>
+        <tr className="border-t-2 font-bold">
+          <td className="py-1">합계</td>
+          <td className="text-right">{cell(totLev)}</td>
+          <td className="text-right">{cell(totInv)}</td>
+          <td className="text-right">{cell(totAll)}</td>
+        </tr>
+      </tfoot>
+    </table>
   );
 }
 
@@ -49,14 +80,10 @@ export default function StatsClient() {
           <div className="rounded border p-3 text-xs">
             전체 {s.overall.count}건 · 승 {s.overall.wins} / 패 {s.overall.losses} · 승률 {s.overall.winRate.toFixed(1)}% · 순손익 {s.overall.net.toLocaleString()}원 · PF {s.overall.profitFactor?.toFixed(2) ?? "—"}
           </div>
-          <div className="grid md:grid-cols-3 gap-3">
-            <Block title="방향별" data={s.byDirection} />
-            <Block title="전략별" data={s.byStrategy} />
-            <Block title="등급별" data={s.byGrade} />
-            <Block title="규칙별" data={s.byRule} />
-            <Block title="시간대별" data={s.bySession} />
+          <div className="rounded border p-3 text-xs">
+            <h3 className="font-bold mb-2">시간대 × 종목 (진입 시각 기준, KST 30분 단위)</h3>
+            <SlotTable rows={s.bySlot} />
           </div>
-          {s.insights.map((i) => <p key={i} className="text-xs text-zinc-600 dark:text-zinc-400">{i}</p>)}
         </>
       )}
     </main>
