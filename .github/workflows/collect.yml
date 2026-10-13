@@ -2,7 +2,8 @@ name: collect-k200
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "47 6 * * 1-5"  # KST 월-금 15:47
+    - cron: "23 7 * * 1-5"  # KST 월-금 16:23
   workflow_dispatch:
     inputs:
       date:
