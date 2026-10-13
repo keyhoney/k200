@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: "50 6 * * 1-5"   # KST 15:50 본수집 (UTC 06:50, 월-금)
     - cron: "0 7 * * 1-5"    # KST 16:00 메우기 (UTC 07:00, upsert 멱등)
+    - cron: "5 11 * * *"  # 예시: UTC 11:05 = KST 20:05
   workflow_dispatch:
     inputs:
       date:
