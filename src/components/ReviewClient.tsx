@@ -10,14 +10,9 @@ import { toMarkers } from "@/lib/markers";
 import { aggregateBars, type Bar } from "@/lib/bars";
 import { calcETFTrade, ETF_LABEL } from "@/lib/etf";
 import type { ChartData } from "@/lib/chartData";
+import { isFixedHoliday, isWeekend, shiftTradingDay } from "@/lib/tradingDays";
+import DatePicker from "./DatePicker";
 import { Badge, Empty, btnMini as btnMiniCls, cardPad as cardPadCls, page as pageCls, pnlText as pnlTextCls, sectionTitle as sectionTitleCls } from "@/components/ui";
-
-function shiftDate(date: string, delta: number): string {
-  const d = new Date(`${date}T12:00:00+09:00`);
-  d.setDate(d.getDate() + delta);
-  const kst = new Date(d.getTime() + 9 * 3600 * 1000);
-  return kst.toISOString().slice(0, 10);
-}
 
 function barToDtLocal(bar: Bar): string {
   return new Date((bar.time + 9 * 3600) * 1000).toISOString().slice(0, 16);
@@ -32,12 +27,12 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
 
   useEffect(() => setData(initial), [initial]);
 
-  // 날짜 전환 단축키: ←/→ 이동, Esc 선택 해제
+  // 날짜 전환 단축키: ←/→ 직전·다음 거래일(주말·휴장 스킵), Esc 선택 해제
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === "INPUT" || (e.target as HTMLElement)?.tagName === "TEXTAREA") return;
-      if (e.key === "ArrowLeft") router.push(`/review/${shiftDate(data.tradingDate, -1)}`);
-      else if (e.key === "ArrowRight") router.push(`/review/${shiftDate(data.tradingDate, 1)}`);
+      if (e.key === "ArrowLeft") router.push(`/review/${shiftTradingDay(data.tradingDate, -1)}`);
+      else if (e.key === "ArrowRight") router.push(`/review/${shiftTradingDay(data.tradingDate, 1)}`);
       else if (e.key === "Escape") { setSelectedId(null); setEditingId(null); }
     };
     window.addEventListener("keydown", h);
@@ -111,27 +106,41 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
     <main className={pageCls}>
       <header className="card p-4 md:p-5 flex items-center gap-2 text-sm flex-wrap">
         <div className="flex items-center gap-1.5">
-          <button className={btnMiniCls} onClick={() => router.push(`/review/${shiftDate(data.tradingDate, -1)}`)} aria-label="이전 거래일">◀</button>
+          <button className={btnMiniCls} onClick={() => router.push(`/review/${shiftTradingDay(data.tradingDate, -1)}`)} aria-label="이전 거래일">◀</button>
           <h1 className="tnum text-lg md:text-xl font-extrabold tracking-tight">{data.tradingDate} 복기</h1>
-          <button className={btnMiniCls} onClick={() => router.push(`/review/${shiftDate(data.tradingDate, 1)}`)} aria-label="다음 거래일">▶</button>
+          <button className={btnMiniCls} onClick={() => router.push(`/review/${shiftTradingDay(data.tradingDate, 1)}`)} aria-label="다음 거래일">▶</button>
         </div>
-        <input type="date" className="rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-1 text-xs shadow-sm" value={data.tradingDate}
-          onChange={(e) => e.target.value && router.push(`/review/${e.target.value}`)} aria-label="날짜 선택" />
+        <DatePicker value={data.tradingDate} onChange={(ymd) => router.push(`/review/${ymd}`)} />
         <Badge tone="neutral">{data.contract.name} ({data.contract.symbol})</Badge>
-        <span className="text-[11px] text-zinc-400">source: {data.source} · 단축키 ←/→ 날짜이동 · Esc 해제</span>
+        <span className="text-[11px] text-zinc-400">{data.source === "supabase" ? "차트 수집됨" : "차트 데이터 없음"} · 단축키 ←/→ 거래일 이동 · Esc 해제</span>
       </header>
 
-      <div className="card p-4 md:p-5">
-        <h2 className={`${sectionTitleCls} mb-2`}>1분봉 <span className="font-normal text-zinc-500">선물 참고용</span></h2>
-        <KChart bars={data.bars} markers={markers} lines={lines}
-          selectedTradeId={selectedId} onSelectTrade={(id) => { setSelectedId(id); setEditingId(null); }}
-          onPickBar={(b) => setPickedDt(barToDtLocal(b))} />
-      </div>
+      {data.bars.length === 0 ? (
+        <div className="card p-6 md:p-8 flex flex-col items-center gap-2 text-center">
+          <div className="text-2xl">📭</div>
+          <h2 className={sectionTitleCls}>당일 차트 데이터가 없습니다</h2>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-md leading-relaxed">
+            {isWeekend(data.tradingDate) || isFixedHoliday(data.tradingDate)
+              ? "휴장일(주말·공휴일)로 보입니다. 거래는 입력할 수 있지만 차트 복기는 어렵습니다."
+              : "휴장일이거나 아직 차트 데이터를 불러오지 않았을 수 있습니다. 수집 상태를 확인하거나 CSV로 보완하세요."}
+          </p>
+          <p className="text-[11px] text-zinc-400">아래에서 거래 입력과 일지 작성은 그대로 가능합니다.</p>
+        </div>
+      ) : (
+        <>
+          <div className="card p-4 md:p-5">
+            <h2 className={`${sectionTitleCls} mb-2`}>1분봉 <span className="font-normal text-zinc-500">선물 참고용</span></h2>
+            <KChart bars={data.bars} markers={markers} lines={lines}
+              selectedTradeId={selectedId} onSelectTrade={(id) => { setSelectedId(id); setEditingId(null); }}
+              onPickBar={(b) => setPickedDt(barToDtLocal(b))} />
+          </div>
 
-      <div className="card p-4 md:p-5">
-        <h2 className={`${sectionTitleCls} mb-2`}>3분봉 <span className="font-normal text-zinc-500">(1분봉 합성)</span></h2>
-        <KChart bars={bars3m} markers={markers3m} />
-      </div>
+          <div className="card p-4 md:p-5">
+            <h2 className={`${sectionTitleCls} mb-2`}>3분봉 <span className="font-normal text-zinc-500">(1분봉 합성)</span></h2>
+            <KChart bars={bars3m} markers={markers3m} />
+          </div>
+        </>
+      )}
 
       <section className="grid gap-4 lg:grid-cols-2 items-start">
         <div className="flex flex-col gap-3">

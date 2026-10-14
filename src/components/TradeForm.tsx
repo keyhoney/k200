@@ -89,7 +89,7 @@ export default function TradeForm({
     setMsg("");
     setRowErrors({});
     if (contractId == null) {
-      setMsg("DEMO 모드에서는 저장할 수 없습니다. Supabase에 월물/바를 먼저 적재하세요.");
+      setMsg("월물 정보가 없어 저장할 수 없습니다. 차트 데이터가 수집된 거래일인지 확인하세요.");
       return;
     }
     const bodies: Array<{ key: number; body: Exclude<ReturnType<typeof draftsToBody>, { error: string }> }> = [];
