@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pivotBySlot, slotOf, type StatTrade } from "./stats";
+import { buildInsights, calcStreaks, holdingBucket, pivotBySlot, slotOf, weekdayOf, type StatTrade } from "./stats";
 
 const t = (direction: "LONG" | "SHORT", executedAt: string, net: number): StatTrade => ({
   direction,
@@ -44,5 +44,34 @@ describe("pivotBySlot", () => {
     expect(first.inv).toEqual({ count: 1, net: -500 });
     expect(rows[2]).toMatchObject({ slot: "10:00-10:30", lev: { count: 1, net: 2000 } });
     expect(rows[1].lev.count).toBe(0);
+  });
+});
+
+describe("weekday / holding / streaks", () => {
+  it("labels weekday in KST", () => {
+    // 2026-10-12는 월요일
+    expect(weekdayOf({ direction: "LONG", executedAt: "2026-10-12T09:05:00+09:00", executions: [] })).toBe("월요일");
+    expect(weekdayOf({ direction: "LONG", tradingDate: "2026-10-12", executions: [] })).toBe("월요일");
+  });
+
+  it("buckets holding minutes", () => {
+    const base = { direction: "LONG" as const, executions: [] };
+    expect(holdingBucket({ ...base, executedAt: "2026-10-12T09:00:00+09:00", exitAt: "2026-10-12T09:04:00+09:00" })).toBe("~5분");
+    expect(holdingBucket({ ...base, executedAt: "2026-10-12T09:00:00+09:00", exitAt: "2026-10-12T09:20:00+09:00" })).toBe("15~30분");
+    expect(holdingBucket({ ...base })).toBe("기타");
+  });
+
+  it("computes streaks and insights without advice", () => {
+    expect(calcStreaks([100, 200, -50, -60, -70, 10])).toEqual({ maxWinStreak: 2, maxLossStreak: 3 });
+    const lines = buildInsights({
+      byRule: {
+        "지킴": { count: 2, wins: 2, losses: 0, flats: 0, winRate: 100, grossProfit: 200, grossLoss: 0, net: 200, avgWin: 100, avgLoss: 0, profitFactor: null, maxWin: 150, maxLoss: 0 },
+        "어김": { count: 2, wins: 0, losses: 2, flats: 0, winRate: 0, grossProfit: 0, grossLoss: 200, net: -200, avgWin: 0, avgLoss: 100, profitFactor: 0, maxWin: 0, maxLoss: -150 },
+      },
+      byDirection: {},
+      streaks: { maxWinStreak: 1, maxLossStreak: 3 },
+    });
+    expect(lines.join("\n")).toContain("규칙 준수");
+    expect(lines.join("\n")).toContain("최대 연속 손실 3회");
   });
 });

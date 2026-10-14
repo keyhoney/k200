@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { btnGhost, cardPad, input, label, sectionTitle } from "@/components/ui";
 
 // Agnet.md §14 형식: trading_date,time,open,high,low,close,volume,open_interest
 // trading_date,time,open,high,low,close,volume,open_interest
@@ -57,17 +58,17 @@ export default function CsvUpload() {
   }
 
   return (
-    <div className="rounded border p-4 flex flex-col gap-2 text-sm">
-      <h2 className="font-bold">시세 CSV 수동 보완</h2>
-      <label className="text-xs">월물 심볼 (예: 101X12)
-        <input className="mt-1 w-full rounded border px-2 py-1" value={symbol} onChange={(e) => setSymbol(e.target.value)} />
+    <div className={cardPad}>
+      <h2 className={sectionTitle}>시세 CSV 수동 보완</h2>
+      <label className={label}>월물 심볼 (예: 101X12)
+        <input className={`${input} tnum`} value={symbol} onChange={(e) => setSymbol(e.target.value)} />
       </label>
-      <input type="file" accept=".csv" onChange={(e) => onFile(e.target.files?.[0])} className="text-xs" />
-      {preview.length > 0 && <pre className="text-[11px] bg-zinc-50 dark:bg-zinc-900 p-2 rounded overflow-auto">{preview.join("\n")}</pre>}
-      <button onClick={save} disabled={busy || !payload} className="rounded border px-3 py-1 disabled:opacity-50">
+      <input type="file" accept=".csv" onChange={(e) => onFile(e.target.files?.[0])} className="text-xs file:mr-2 file:rounded-lg file:border file:border-zinc-300 dark:file:border-zinc-700 file:px-3 file:py-1.5 file:text-xs file:bg-white dark:file:bg-zinc-900" />
+      {preview.length > 0 && <pre className="thin-scroll text-[11px] tnum bg-zinc-100 dark:bg-zinc-900 p-3 rounded-xl overflow-auto border border-zinc-200 dark:border-zinc-800">{preview.join("\n")}</pre>}
+      <button onClick={save} disabled={busy || !payload} className={`${btnGhost} self-start`}>
         {busy ? "저장 중…" : "유효성 검사 후 저장"}
       </button>
-      {msg && <p className="text-xs">{msg}</p>}
+      {msg && <p className="text-xs text-zinc-600 dark:text-zinc-400">{msg}</p>}
     </div>
   );
 }

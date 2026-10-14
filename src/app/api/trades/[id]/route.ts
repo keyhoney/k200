@@ -55,21 +55,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         })),
       );
       if (iErr) throw iErr;
-      return Response.json({ ok: true });
+      // 체결 교체 후 복기 필드도 함께 갱신 (단일 PATCH로 분할+복기 수정 지원)
     }
+
+    const patchFields: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (p.strategyName !== undefined) patchFields.strategy_name = p.strategyName;
+    if (p.setupGrade !== undefined) patchFields.setup_grade = p.setupGrade;
+    if (p.entryReason !== undefined) patchFields.entry_reason = p.entryReason;
+    if (p.exitReason !== undefined) patchFields.exit_reason = p.exitReason;
+    if (p.tradeNote !== undefined) patchFields.trade_note = p.tradeNote;
+    if (p.ruleFollowed !== undefined) patchFields.rule_followed = p.ruleFollowed;
+    if (p.screenshotPath !== undefined) patchFields.screenshot_path = p.screenshotPath;
 
     const { error } = await sb
       .from("trades")
-      .update({
-        strategy_name: p.strategyName ?? undefined,
-        setup_grade: p.setupGrade ?? undefined,
-        entry_reason: p.entryReason ?? undefined,
-        exit_reason: p.exitReason ?? undefined,
-        trade_note: p.tradeNote ?? undefined,
-        rule_followed: p.ruleFollowed ?? undefined,
-        screenshot_path: p.screenshotPath ?? undefined,
-        updated_at: new Date().toISOString(),
-      })
+      .update(patchFields)
       .eq("id", id)
       .eq("user_id", user.user.id);
     if (error) throw error;

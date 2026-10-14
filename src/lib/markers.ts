@@ -7,6 +7,7 @@ export interface MarkerInput {
   type: "ENTRY" | "EXIT";
   executedAt: string; // ISO with offset
   tradeIndex?: number;
+  tradeId?: string;
 }
 
 export function toMarkers(

@@ -49,7 +49,7 @@ describe("isSimpleEditable", () => {
     ).toBe(true);
   });
 
-  it("blocks split executions", () => {
+  it("allows split executions after upgrade", () => {
     expect(
       isSimpleEditable(
         trade([
@@ -58,6 +58,6 @@ describe("isSimpleEditable", () => {
           { type: "EXIT", executedAt: "2026-10-12T09:41:00+09:00", price: 15200, quantity: 20, fee: 15 },
         ]),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

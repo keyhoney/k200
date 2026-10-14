@@ -9,6 +9,8 @@ export interface StatTrade {
   setupGrade?: string | null;
   ruleFollowed?: boolean | null;
   executedAt?: string; // 최초 진입 시각 (시간대/요일 분류용)
+  tradingDate?: string; // YYYY-MM-DD (요일 폴백용)
+  exitAt?: string; // 최종 청산 시각 (보유시간용)
 }
 
 export interface StatsSummary {
@@ -163,4 +165,81 @@ export function pivotBySlot(trades: StatTrade[]): SlotRow[] {
     cell.net += etfNet(t);
   }
   return hasOther ? [...rows, other] : rows;
+}
+
+// 요일(KST) · 연속 손익 · 보유시간 · 인사이트 — 집계 서술만, 추천 문구 금지.
+const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
+
+export function weekdayOf(t: StatTrade): string {
+  const iso = t.executedAt;
+  if (iso && !Number.isNaN(new Date(iso).getTime())) {
+    const kst = new Date(new Date(iso).getTime() + 9 * 3600 * 1000);
+    return WEEKDAY[kst.getUTCDay()] + "요일";
+  }
+  if (t.tradingDate && /^\d{4}-\d{2}-\d{2}$/.test(t.tradingDate)) {
+    const d = new Date(`${t.tradingDate}T12:00:00+09:00`);
+    if (!Number.isNaN(d.getTime())) return WEEKDAY[new Date(d.getTime() + 9 * 3600 * 1000).getUTCDay()] + "요일";
+  }
+  return "기타";
+}
+
+export function holdingBucket(t: StatTrade): string {
+  if (!t.executedAt || !t.exitAt) return "기타";
+  const ms = new Date(t.exitAt).getTime() - new Date(t.executedAt).getTime();
+  if (Number.isNaN(ms) || ms < 0) return "기타";
+  const m = ms / 60000;
+  if (m <= 5) return "~5분";
+  if (m <= 15) return "5~15분";
+  if (m <= 30) return "15~30분";
+  return "30분+";
+}
+
+export interface Streaks {
+  maxWinStreak: number;
+  maxLossStreak: number;
+}
+
+export function calcStreaks(netsInOrder: number[]): Streaks {
+  let maxWinStreak = 0;
+  let maxLossStreak = 0;
+  let w = 0;
+  let l = 0;
+  for (const n of netsInOrder) {
+    if (n > 0) { w += 1; l = 0; }
+    else if (n < 0) { l += 1; w = 0; }
+    else { w = 0; l = 0; }
+    maxWinStreak = Math.max(maxWinStreak, w);
+    maxLossStreak = Math.max(maxLossStreak, l);
+  }
+  return { maxWinStreak, maxLossStreak };
+}
+
+export function avgNet(s: StatsSummary): number {
+  return s.count ? s.net / s.count : 0;
+}
+
+// 과거 기록의 단순 집계 서술 (투자 조언 아님).
+export function buildInsights(input: {
+  byRule: Record<string, StatsSummary>;
+  byDirection: Record<string, StatsSummary>;
+  streaks: Streaks;
+}): string[] {
+  const out: string[] = [];
+  const rTrue = input.byRule["지킴"];
+  const rFalse = input.byRule["어김"];
+  if (rTrue && rFalse && rTrue.count > 0 && rFalse.count > 0) {
+    out.push(
+      `규칙 준수 거래 ${rTrue.count}건 평균 ${Math.round(avgNet(rTrue)).toLocaleString()}원 / 미준수 ${rFalse.count}건 평균 ${Math.round(avgNet(rFalse)).toLocaleString()}원`,
+    );
+  }
+  const l = input.byDirection["LONG"];
+  const s = input.byDirection["SHORT"];
+  if (l && s && l.count > 0 && s.count > 0) {
+    out.push(
+      `LONG ${l.count}건 평균 ${Math.round(avgNet(l)).toLocaleString()}원 / SHORT ${s.count}건 평균 ${Math.round(avgNet(s)).toLocaleString()}원`,
+    );
+  }
+  if (input.streaks.maxLossStreak >= 2) out.push(`최대 연속 손실 ${input.streaks.maxLossStreak}회 기록 있음`);
+  if (input.streaks.maxWinStreak >= 2) out.push(`최대 연속 이익 ${input.streaks.maxWinStreak}회 기록 있음`);
+  return out;
 }

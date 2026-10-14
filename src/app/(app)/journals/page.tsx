@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { Empty, page, pageTitle, td, th, trBorder } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -31,35 +32,38 @@ export default async function JournalsPage() {
     rows = [];
   }
   return (
-    <main className="p-6 flex flex-col gap-4 text-sm">
-      <h1 className="text-xl font-bold">일지 목록</h1>
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-left border-b">
-            <th>날짜</th><th>일지 내용</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.trading_date} className="border-b">
-              <td className="whitespace-nowrap">{r.trading_date}</td>
-              <td className="max-w-xl">
-                {r.text ? (
-                  <pre className="whitespace-pre-wrap break-words text-[11px] text-zinc-600 dark:text-zinc-400">
-                    {r.text.slice(0, 200)}{r.text.length > 200 ? "…" : ""}
-                  </pre>
-                ) : (
-                  <span className="text-zinc-400">기록 없음</span>
-                )}
-              </td>
-              <td><Link className="underline" href={`/review/${r.trading_date}`}>보기</Link></td>
+    <main className={page}>
+      <h1 className={pageTitle}>일지 목록</h1>
+      <div className="card p-2 md:p-4 overflow-x-auto thin-scroll">
+        {rows.length === 0 ? (
+          <div className="p-2"><Empty>아직 저장된 일지가 없습니다.</Empty></div>
+        ) : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-zinc-200 dark:border-zinc-800">
+              <th className={th}>날짜</th><th className={th}>일지 내용</th><th className={th}></th>
             </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr><td colSpan={3} className="text-zinc-400">아직 저장된 일지가 없습니다.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.trading_date} className={trBorder}>
+                <td className={`${td} whitespace-nowrap tnum font-semibold`}>{r.trading_date}</td>
+                <td className={`${td} max-w-xl`}>
+                  {r.text ? (
+                    <pre className="whitespace-pre-wrap break-words text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+                      {r.text.slice(0, 200)}{r.text.length > 200 ? "…" : ""}
+                    </pre>
+                  ) : (
+                    <span className="text-zinc-400">기록 없음</span>
+                  )}
+                </td>
+                <td className={`${td} text-right`}><Link className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium" href={`/review/${r.trading_date}`}>보기</Link></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        )}
+      </div>
     </main>
   );
 }
