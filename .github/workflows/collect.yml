@@ -1,10 +1,6 @@
 name: collect-k200
 
 on:
-  schedule:
-    - cron: "47 6 * * 1-5" # KST 월~금 15:47
-    - cron: "23 7 * * 1-5" # KST 월~금 16:23
-
   workflow_dispatch:
     inputs:
       date:
@@ -31,7 +27,6 @@ jobs:
   collect:
     name: Collect K200 1m Bars
     runs-on: ubuntu-24.04
-
     timeout-minutes: 20
 
     env:
