@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "./bars";
 import {
+  countTradingDates,
   minuteRowsToBars,
   normalizeTrainerDays,
   roundPrice,
@@ -104,6 +105,27 @@ describe("normalizeTrainerDays", () => {
   it("형식이 잘못되면 빈 배열", () => {
     expect(normalizeTrainerDays(null)).toEqual([]);
     expect(normalizeTrainerDays([{ trading_date: "20261110", bar_count: 300 }])).toEqual([]);
+  });
+});
+
+describe("countTradingDates", () => {
+  it("날짜별 봉 수를 세고 유효하지 않은 행은 무시한다", () => {
+    const counts = countTradingDates([
+      { trading_date: "2026-11-10" },
+      { trading_date: "2026-11-10" },
+      { trading_date: "2026-11-11" },
+      { trading_date: "20261112" },
+      { trading_date: null },
+      null,
+    ]);
+    expect(counts.get("2026-11-10")).toBe(2);
+    expect(counts.get("2026-11-11")).toBe(1);
+    expect(counts.has("20261112")).toBe(false);
+  });
+
+  it("배열이 아니면 빈 맵", () => {
+    expect(countTradingDates(null).size).toBe(0);
+    expect(countTradingDates("x").size).toBe(0);
   });
 });
 

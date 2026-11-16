@@ -72,6 +72,19 @@ export const TrainerDayRowSchema = z.object({
   bar_count: z.union([z.number(), z.string()]).transform((v) => Number(v)),
 });
 
+// 폴백에서 minute_bars의 trading_date만 모아 날짜별 봉 수를 센다 (REST 집계 불가 대비)
+export function countTradingDates(rows: unknown): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (!Array.isArray(rows)) return counts;
+  for (const row of rows) {
+    const d = (row as { trading_date?: unknown } | null | undefined)?.trading_date;
+    if (typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
 export function normalizeTrainerDays(rows: unknown, minBars = TRAINER_MIN_BARS): TrainerDay[] {
   const parsed = z.array(TrainerDayRowSchema).safeParse(rows);
   if (!parsed.success) return [];
@@ -123,20 +136,58 @@ async function serverClient(): Promise<SupabaseClient> {
   return sb;
 }
 
-// 봉이 있는 거래일 목록 — migration 0002의 trainer_days() 집계 함수 사용.
-export async function loadTrainerDays(minBars = TRAINER_MIN_BARS): Promise<TrainerDay[]> {
-  const sb = await serverClient();
-  const { data, error } = await sb.rpc("trainer_days");
-  if (error) {
-    if (error.code === "PGRST202") {
+// 0002 미적용 환경용 폴백: 이 Supabase 인스턴스는 REST 집계 함수가 차단되어 있어
+// minute_bars를 id 순서로 페이징해(유니크 키라 페이지 경계 누락 없음) JS에서 날짜별 집계한다.
+const TRAINER_DAYS_PAGE_SIZE = 1000;
+
+async function loadTrainerDaysFallback(sb: SupabaseClient, minBars: number): Promise<TrainerDay[]> {
+  const { count, error: countError } = await sb
+    .from("minute_bars")
+    .select("id", { count: "exact", head: true });
+  if (countError || count === null || count === undefined) {
+    throw new TrainerDataError(
+      "훈련 일자 목록을 불러오지 못했습니다. supabase/migrations/0002_trainer_days.sql 적용 여부를 확인해 주세요.",
+      500,
+    );
+  }
+  const fetchPage = (from: number) =>
+    sb
+      .from("minute_bars")
+      .select("trading_date")
+      .order("id", { ascending: true })
+      .range(from, from + TRAINER_DAYS_PAGE_SIZE - 1);
+  const pageCount = Math.ceil(count / TRAINER_DAYS_PAGE_SIZE);
+  const results = await Promise.all(
+    Array.from({ length: pageCount }, (_, i) => fetchPage(i * TRAINER_DAYS_PAGE_SIZE)),
+  );
+  const counts = new Map<string, number>();
+  for (const page of results) {
+    if (page.error) {
       throw new TrainerDataError(
-        "trainer_days() 함수가 없습니다. supabase/migrations/0002_trainer_days.sql 을 적용해 주세요.",
+        "훈련 일자 목록을 불러오지 못했습니다. supabase/migrations/0002_trainer_days.sql 적용 여부를 확인해 주세요.",
         500,
       );
     }
-    throw new TrainerDataError("훈련 일자 목록을 불러오지 못했습니다.", 500);
+    for (const [date, n] of countTradingDates(page.data)) {
+      counts.set(date, (counts.get(date) ?? 0) + n);
+    }
   }
-  return normalizeTrainerDays(data ?? [], minBars);
+  const rows = [...counts].map(([trading_date, bar_count]) => ({ trading_date, bar_count }));
+  return normalizeTrainerDays(rows, minBars);
+}
+
+// 봉이 있는 거래일 목록 — migration 0002의 trainer_days() 집계 함수 우선 사용,
+// 함수가 아직 없으면(PGRST202) minute_bars 직접 집계로 폴백한다.
+export async function loadTrainerDays(minBars = TRAINER_MIN_BARS): Promise<TrainerDay[]> {
+  const sb = await serverClient();
+  const { data, error } = await sb.rpc("trainer_days");
+  if (!error) {
+    return normalizeTrainerDays(data ?? [], minBars);
+  }
+  if (error.code === "PGRST202") {
+    return loadTrainerDaysFallback(sb, minBars);
+  }
+  throw new TrainerDataError("훈련 일자 목록을 불러오지 못했습니다.", 500);
 }
 
 export async function loadTrainerDay(date: string): Promise<TrainerDayData> {
