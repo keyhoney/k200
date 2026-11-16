@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KOSPI200 미니 선물 트레이닝</title>
+<style>
+  :root{
+    --bg:#080b12;
+    --panel:#0f1420;
+    --panel2:#131a28;
+    --line:rgba(255,255,255,.075);
+    --line2:rgba(255,255,255,.12);
+    --text:#e6edf6;
+    --muted:#8a97ab;
+    --muted2:#6b7789;
+    --up:#ff5d5d;
+    --down:#3d9bff;
+    --ma20:#f6c445;
+    --wma20:#a78bfa;
+    --accent:#22d3ee;
+    --long:#e5484d;
+    --short:#2f7fe0;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1100px 560px at 12% -12%, rgba(56,120,255,.13), transparent 62%),
+      radial-gradient(900px 480px at 96% -8%, rgba(167,139,250,.09), transparent 58%),
+      var(--bg);
+    color:var(--text);
+    font-family:"Pretendard","Malgun Gothic","Apple SD Gothic Neo",system-ui,-apple-system,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    font-feature-settings:"tnum" on;
+  }
+  .app{
+    display:flex;flex-direction:column;gap:11px;
+    padding:12px 16px 16px;min-height:100vh;max-width:1780px;margin:0 auto;
+  }
+
+  /* ---------- header ---------- */
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:4px 2px}
+  .brand{display:flex;align-items:center;gap:11px;margin-right:auto}
+  .mark{
+    width:40px;height:40px;border-radius:11px;display:grid;place-items:center;
+    background:linear-gradient(145deg,#1b3b66,#0e2038);
+    border:1px solid rgba(120,190,255,.28);
+    box-shadow:0 0 22px rgba(56,140,255,.16), inset 0 1px 0 rgba(255,255,255,.08);
+    font-weight:800;font-size:13px;letter-spacing:.5px;color:#8fd3ff;
+  }
+  h1{font-size:15px;margin:0;letter-spacing:-.2px;font-weight:800}
+  .brand p{margin:2px 0 0;font-size:11px;color:var(--muted2);letter-spacing:.2px}
+  .hstats{display:flex;align-items:stretch;gap:8px;flex-wrap:wrap}
+  .hstat{
+    display:flex;flex-direction:column;gap:2px;justify-content:center;
+    padding:7px 12px;border:1px solid var(--line);border-radius:9px;
+    background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,.008));
+    min-width:82px;
+  }
+  .hstat span{font-size:9.5px;color:var(--muted2);letter-spacing:.12em;text-transform:uppercase}
+  .hstat b{font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .hstat.click{cursor:pointer;transition:.15s border-color,.15s background}
+  .hstat.click:hover{border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.035)}
+  .head-actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .chk{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);cursor:pointer;user-select:none;
+    padding:6px 9px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02)}
+  .chk:hover{color:var(--text);border-color:var(--line2)}
+  .chk input{accent-color:#22d3ee;margin:0;width:13px;height:13px;cursor:pointer}
+  .sel{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);
+    padding:5px 9px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02)}
+  .sel select{
+    background:transparent;border:0;color:var(--text);font-family:inherit;font-size:11.5px;
+    font-weight:700;outline:none;cursor:pointer;padding:1px 2px;
+  }
+  .sel select option{background:#121826}
+  .sel select:disabled{opacity:.45;cursor:progress}
+  .sel select#optDay{max-width:132px}
+
+  /* ---------- data status ---------- */
+  .data-status{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    margin:0 2px;padding:8px 12px;border-radius:9px;
+    border:1px solid rgba(34,211,238,.22);
+    background:rgba(34,211,238,.07);
+    color:#9fdcea;font-size:11.5px;line-height:1.45;
+  }
+  .data-status[hidden]{display:none}
+  .data-status.error{border-color:rgba(255,107,107,.35);background:rgba(229,72,77,.1);color:#ffb3b3}
+  .data-status a{color:#ffd0d0;text-decoration:underline}
+  .data-status .btn{margin-left:auto;padding:5px 10px;font-size:10.5px}
+
+  /* ---------- progress ---------- */
+  .progress-track{
+    height:3px;border-radius:99px;background:rgba(255,255,255,.06);overflow:hidden;margin:0 2px;
+  }
+  .progress-fill{
+    height:100%;width:0%;border-radius:99px;
+    background:linear-gradient(90deg,#22d3ee,#3b82f6 60%,#a78bfa);
+    box-shadow:0 0 12px rgba(34,211,238,.45);
+    transition:width .18s ease;
+  }
+
+  /* ---------- charts ---------- */
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:11px;flex:1 1 auto;min-height:300px}
+  .chart-card{
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    background:linear-gradient(180deg,#0f1522,#0c111b);
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 14px 34px rgba(0,0,0,.28);
+  }
+  .chart-top{
+    display:flex;align-items:center;gap:10px;flex-wrap:nowrap;
+    padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.055);min-height:36px;
+  }
+  .tf{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;letter-spacing:-.1px;flex:0 0 auto}
+  .tf .hint{
+    font-size:9px;font-weight:700;color:#7fd6ea;background:rgba(34,211,238,.1);
+    border:1px solid rgba(34,211,238,.22);border-radius:4px;padding:1px 4px;letter-spacing:.04em;
+  }
+  .ohlc{display:flex;align-items:center;gap:7px;font-size:10.5px;color:var(--muted2);
+    font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;flex:1 1 auto;min-width:0}
+  .ohlc b{color:#cfd9e8;font-weight:600}
+  .ohlc .chg{font-weight:700;margin-left:2px}
+  .ohlc .chg.up{color:var(--up)} .ohlc .chg.down{color:var(--down)} .ohlc .chg.flat{color:var(--muted)}
+  .ohlc .live{width:6px;height:6px;border-radius:99px;background:#22d3ee;flex:0 0 auto;
+    box-shadow:0 0 8px rgba(34,211,238,.8);animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+  .legend{display:flex;align-items:center;gap:10px;margin-left:auto;font-size:10px;color:var(--muted);flex:0 0 auto}
+  .lg{display:flex;align-items:center;gap:4px;white-space:nowrap}
+  .lg i{width:12px;height:3px;border-radius:2px;display:inline-block}
+  .lg.ma i{background:var(--ma20);box-shadow:0 0 8px rgba(246,196,69,.5)}
+  .lg.wma i{background:var(--wma20);box-shadow:0 0 8px rgba(167,139,250,.5)}
+  .chart-body{position:relative;flex:1;min-height:0}
+  .chart-body canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+
+  /* ---------- deck ---------- */
+  .deck{
+    display:grid;grid-template-columns:minmax(220px,1fr) auto auto;gap:11px;align-items:stretch;
+  }
+  .hidden{display:none!important}
+  .deck-result{
+    display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+    padding:12px 18px;border-radius:12px;border:1px solid var(--line);
+    border-left:3px solid #6b7789;
+    background:linear-gradient(180deg,#0f1522,#0c111b);
+    box-shadow:0 10px 26px rgba(0,0,0,.22);
+  }
+  .deck-result.pos{border-left-color:#ff6b6b;background:linear-gradient(90deg,rgba(255,107,107,.09),#0c111b 46%)}
+  .deck-result.neg{border-left-color:#4d9dff;background:linear-gradient(90deg,rgba(77,157,255,.09),#0c111b 46%)}
+  .res-main{min-width:176px}
+  .res-eyebrow{font-size:9px;letter-spacing:.17em;text-transform:uppercase;color:#7fd6ea;font-weight:800}
+  .res-date{font-size:14.5px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+  .res-pnl{display:flex;flex-direction:column;gap:1px;min-width:150px}
+  .res-pnl .v{font-size:24px;font-weight:800;letter-spacing:-.8px;font-variant-numeric:tabular-nums;line-height:1.1}
+  .res-pnl .v.pos{color:#ff6b6b} .res-pnl .v.neg{color:#4d9dff} .res-pnl .v.zero{color:#9fb0c6}
+  .res-pnl .w{font-size:10.5px;color:var(--muted2);font-variant-numeric:tabular-nums}
+  .res-chips{display:flex;gap:8px;flex-wrap:wrap;margin-right:auto}
+  .res-chip{padding:6px 11px;border:1px solid var(--line);border-radius:8px;background:rgba(255,255,255,.02);min-width:76px}
+  .res-chip i{display:block;font-style:normal;font-size:9px;color:var(--muted2);letter-spacing:.05em;margin-bottom:1px}
+  .res-chip b{font-size:12px;font-variant-numeric:tabular-nums}
+  .res-actions{display:flex;gap:8px;margin-left:auto}
+  .res-actions .btn{padding:10px 18px;font-size:12px}
+  .pos-card{
+    display:flex;flex-direction:column;justify-content:center;gap:3px;
+    padding:10px 15px;border-radius:12px;border:1px solid var(--line);
+    background:linear-gradient(180deg,#0f1522,#0c111b);
+    border-left:3px solid rgba(255,255,255,.14);
+    box-shadow:0 10px 26px rgba(0,0,0,.22);
+    transition:border-color .2s, background .2s;
+  }
+  .pos-card.long{border-left-color:var(--long);background:linear-gradient(180deg,rgba(229,72,77,.1),#0c111b 72%)}
+  .pos-card.short{border-left-color:var(--short);background:linear-gradient(180deg,rgba(47,127,224,.1),#0c111b 72%)}
+  .pos-label{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2);font-weight:700}
+  .pos-main{font-size:15px;font-weight:800;display:flex;align-items:baseline;gap:8px;font-variant-numeric:tabular-nums}
+  .pos-main .side{font-size:10px;padding:2px 6px;border-radius:5px;font-weight:800;letter-spacing:.04em}
+  .pos-main .side.long{background:rgba(229,72,77,.18);color:#ff9296;border:1px solid rgba(229,72,77,.4)}
+  .pos-main .side.short{background:rgba(47,127,224,.18);color:#8fc2ff;border:1px solid rgba(47,127,224,.4)}
+  .pos-sub{font-size:10.5px;color:var(--muted2);font-variant-numeric:tabular-nums}
+  .pos-sub .up{color:var(--up);font-weight:700}
+  .pos-sub .down{color:var(--down);font-weight:700}
+  .pos-sub .flat{color:var(--muted);font-weight:700}
+
+  .trade-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .btn{
+    position:relative;display:flex;align-items:center;justify-content:center;gap:7px;
+    border-radius:9px;border:1px solid transparent;font-family:inherit;font-weight:800;
+    font-size:12.5px;letter-spacing:-.1px;cursor:pointer;user-select:none;
+    transition:filter .15s, transform .06s, opacity .15s, background .15s, border-color .15s;
+    padding:11px 16px;white-space:nowrap;
+  }
+  .btn:active:not(:disabled){transform:translateY(1px)}
+  .btn kbd{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9px;font-weight:700;
+    background:rgba(0,0,0,.26);border-radius:4px;padding:2px 4px;letter-spacing:0;
+    opacity:.85;
+  }
+  .btn:disabled{opacity:.32;cursor:not-allowed;filter:saturate(.4)}
+  .long-entry{background:linear-gradient(180deg,#f06165,#cf3439);color:#fff;box-shadow:0 6px 18px rgba(229,72,77,.2)}
+  .long-entry:hover:not(:disabled){filter:brightness(1.09)}
+  .long-exit{background:rgba(229,72,77,.09);border-color:rgba(229,72,77,.42);color:#ff989b}
+  .long-exit:hover:not(:disabled){background:rgba(229,72,77,.17)}
+  .short-entry{background:linear-gradient(180deg,#3f92f5,#2166c4);color:#fff;box-shadow:0 6px 18px rgba(47,127,224,.2)}
+  .short-entry:hover:not(:disabled){filter:brightness(1.09)}
+  .short-exit{background:rgba(47,127,224,.09);border-color:rgba(47,127,224,.42);color:#8fc2ff}
+  .short-exit:hover:not(:disabled){background:rgba(47,127,224,.17)}
+  .btn.ghost{
+    background:rgba(255,255,255,.035);border-color:var(--line2);color:#cfd9e8;
+    font-size:11.5px;padding:8px 12px;font-weight:700;
+  }
+  .btn.ghost:hover{background:rgba(255,255,255,.07)}
+
+  .next-wrap{display:flex;flex-direction:column;justify-content:center;gap:5px;min-width:178px}
+  .next{
+    background:linear-gradient(180deg,#3ee0f0,#12a9d6);color:#031019;
+    font-size:14.5px;padding:13px 22px;box-shadow:0 8px 24px rgba(34,211,238,.24);
+    border-radius:10px;
+  }
+  .next:hover:not(:disabled){filter:brightness(1.07)}
+  .next kbd{background:rgba(0,0,0,.16);color:#03222b}
+  .next-sub{text-align:center;font-size:10px;color:var(--muted2);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+  .next.ended{background:linear-gradient(180deg,#2a3444,#1c2431);color:#9aa8bb;box-shadow:none;border:1px solid var(--line2)}
+
+  /* ---------- lower ---------- */
+  .lower{display:grid;grid-template-columns:1fr 1fr;gap:11px;min-height:0}
+  .panel{
+    background:linear-gradient(180deg,#0f1522,#0c111b);border:1px solid var(--line);
+    border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden;
+  }
+  .panel-head{
+    display:flex;align-items:center;gap:8px;padding:8px 13px;border-bottom:1px solid rgba(255,255,255,.055);
+    font-size:10px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--muted2);
+  }
+  .panel-head .tag{font-size:9px;letter-spacing:0;color:#7fd6ea;background:rgba(34,211,238,.1);
+    border:1px solid rgba(34,211,238,.2);border-radius:4px;padding:1px 5px;font-weight:700;text-transform:none}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.05);
+    flex:1;min-height:86px}
+  .kpi{background:#0e1420;padding:10px 13px;display:flex;flex-direction:column;justify-content:center;gap:2px}
+  .kpi span{font-size:9.5px;color:var(--muted2);letter-spacing:.04em;font-weight:600}
+  .kpi b{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.25}
+  .kpi i{font-size:9.5px;font-style:normal;color:var(--muted2);font-variant-numeric:tabular-nums}
+  .kpi b.pos{color:#ff7d7d} .kpi b.neg{color:#6bb3ff}
+  .log-list{flex:1;overflow-y:auto;padding:4px 0;min-height:86px}
+  .log-list::-webkit-scrollbar{width:8px}
+  .log-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.11);border-radius:99px}
+  .log-row{
+    display:grid;grid-template-columns:44px 42px 1fr auto;align-items:center;gap:8px;
+    padding:5px 13px;font-size:11px;border-bottom:1px solid rgba(255,255,255,.035);
+    font-variant-numeric:tabular-nums;
+  }
+  .log-row:last-child{border-bottom:0}
+  .log-side{font-size:9px;font-weight:800;padding:2px 0;text-align:center;border-radius:4px;letter-spacing:.02em}
+  .log-side.long{background:rgba(229,72,77,.16);color:#ff9296}
+  .log-side.short{background:rgba(47,127,224,.16);color:#8fc2ff}
+  .log-time{color:var(--muted2);font-size:10px}
+  .log-px{color:#c3cfdf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .log-px .arrow{color:#4c5a70;margin:0 3px}
+  .log-pnl{font-weight:800;font-size:11px;text-align:right}
+  .log-pnl.pos{color:#ff7d7d} .log-pnl.neg{color:#6bb3ff} .log-pnl.zero{color:var(--muted)}
+  .log-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    height:100%;min-height:86px;color:#4f5b6e;font-size:11px}
+  .log-empty span{font-size:18px;opacity:.5}
+  .log-open{background:rgba(34,211,238,.045)}
+
+  .footer-hint{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    font-size:10px;color:#546173;padding:0 3px}
+  .footer-hint b{color:#8fa0b6;font-weight:700}
+
+  /* ---------- modal ---------- */
+  .modal-back{
+    position:fixed;inset:0;background:rgba(4,7,12,.72);backdrop-filter:blur(6px);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;
+    opacity:0;pointer-events:none;transition:opacity .2s;
+  }
+  .modal-back.show{opacity:1;pointer-events:auto}
+  .modal{
+    width:min(430px,100%);background:linear-gradient(180deg,#111827,#0b1018);
+    border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:24px;
+    box-shadow:0 30px 80px rgba(0,0,0,.6);transform:translateY(10px) scale(.98);
+    transition:transform .22s cubic-bezier(.2,.9,.3,1);
+  }
+  .modal-back.show .modal{transform:none}
+  .modal .eyebrow{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:#22d3ee;font-weight:800}
+  .modal h2{margin:6px 0 2px;font-size:20px;letter-spacing:-.3px}
+  .modal .mdate{font-size:12px;color:var(--muted);margin-bottom:16px;font-variant-numeric:tabular-nums}
+  .mbig{font-size:38px;font-weight:800;letter-spacing:-1.5px;font-variant-numeric:tabular-nums;line-height:1.05}
+  .mbig.pos{color:#ff6b6b} .mbig.neg{color:#4d9dff} .mbig.zero{color:#9fb0c6}
+  .mmoney{font-size:13px;color:var(--muted);margin-top:4px;font-variant-numeric:tabular-nums}
+  .mgrid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(255,255,255,.06);
+    border:1px solid rgba(255,255,255,.06);border-radius:10px;overflow:hidden;margin:18px 0 14px}
+  .mgrid div{background:#0e1420;padding:9px 12px}
+  .mgrid span{display:block;font-size:9.5px;color:var(--muted2);margin-bottom:2px;letter-spacing:.04em}
+  .mgrid b{font-size:13px;font-variant-numeric:tabular-nums}
+  .mrecord{font-size:11px;color:var(--muted2);display:flex;justify-content:space-between;
+    padding:9px 2px 16px;border-top:1px solid rgba(255,255,255,.06);margin-top:2px}
+  .mrecord b{color:#a9b8ca;font-weight:700;font-variant-numeric:tabular-nums}
+  .mbtns{display:flex;gap:8px}
+  .mbtns .btn{flex:1;padding:11px}
+
+  @media (max-width:1100px){
+    .charts{grid-template-columns:1fr;flex:0 0 auto;height:auto}
+    .chart-card{height:clamp(260px,36vh,380px)}
+    .lower{grid-template-columns:1fr}
+    .deck{grid-template-columns:1fr;gap:9px}
+    .next-wrap{min-width:0}
+    .deck-result{gap:12px 16px;padding:12px 14px}
+    .res-actions{margin-left:0;width:100%}
+    .res-actions .btn{flex:1}
+  }
+  @media (max-width:640px){
+    .app{padding:10px}
+    header{gap:10px}
+    .hstats{order:3;width:100%}
+    .head-actions{order:2;width:100%;justify-content:flex-end}
+    .ohlc{display:none}
+    .trade-btns .btn{padding:10px 8px;font-size:11.5px}
+    .kpis{grid-template-columns:1fr 1fr}
+    .kpi{padding:8px 10px}
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <header>
+    <div class="brand">
+      <div class="mark">K2</div>
+      <div>
+        <h1>KOSPI200 미니 선물 트레이닝</h1>
+        <p>1분봉 리플레이 · MA20 / WMA20 · 모의매매</p>
+      </div>
+    </div>
+
+    <div class="hstats">
+      <div class="hstat"><span>세션</span><b id="hSession">–</b></div>
+      <div class="hstat"><span>시각</span><b id="hClock">–</b></div>
+      <div class="hstat"><span>진행</span><b id="hProgress">–</b></div>
+      <div class="hstat click" id="hRecord" title="클릭하면 누적 기록을 초기화합니다"><span>누적</span><b>0.00 pt</b></div>
+    </div>
+
+    <div class="head-actions">
+      <label class="chk"><input type="checkbox" id="optHideDate" checked> 날짜 숨김</label>
+      <label class="chk" title="체크하면 진입·청산 각각 1틱(0.02pt, 1,000원)의 비용을 반영합니다"><input type="checkbox" id="optCost"> 비용 1틱</label>
+      <label class="sel" title="미니 코스피200 선물 · 1계약 = 1pt당 50,000원">계약
+        <select id="optQty">
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="5">5</option>
+        </select>
+      </label>
+      <label class="sel" title="Supabase에 저장된 일자 중 골라서 연습합니다">일자
+        <select id="optDay">
+          <option value="random">랜덤</option>
+        </select>
+      </label>
+      <button class="btn ghost" id="btnNew">새 게임</button>
+    </div>
+  </header>
+
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+
+  <div class="data-status" id="dataStatus" hidden>
+    <span id="dataStatusText">–</span>
+    <button class="btn ghost" id="btnRetry" hidden>다시 시도</button>
+  </div>
+
+  <main class="charts">
+    <section class="chart-card">
+      <div class="chart-top">
+        <div class="tf">3분봉 <span class="hint">3M</span></div>
+        <div class="ohlc" id="ohlc3"></div>
+        <div class="legend">
+          <span class="lg ma"><i></i>MA20</span>
+          <span class="lg wma"><i></i>WMA20</span>
+        </div>
+      </div>
+      <div class="chart-body"><canvas id="c3"></canvas></div>
+    </section>
+
+    <section class="chart-card">
+      <div class="chart-top">
+        <div class="tf">1분봉 <span class="hint">1M</span></div>
+        <div class="ohlc" id="ohlc1"></div>
+        <div class="legend">
+          <span class="lg ma"><i></i>MA20</span>
+          <span class="lg wma"><i></i>WMA20</span>
+        </div>
+      </div>
+      <div class="chart-body"><canvas id="c1"></canvas></div>
+    </section>
+  </main>
+
+  <section class="deck" id="playDeck">
+    <div class="pos-card" id="posCard">
+      <div class="pos-label">현재 포지션</div>
+      <div class="pos-main" id="posMain">포지션 없음</div>
+      <div class="pos-sub" id="posSub">롱 / 숏 버튼으로 진입하세요</div>
+    </div>
+
+    <div class="trade-btns">
+      <button class="btn long-entry" id="btnLongIn">롱 진입 <kbd>1</kbd></button>
+      <button class="btn long-exit" id="btnLongOut">롱 청산 <kbd>2</kbd></button>
+      <button class="btn short-entry" id="btnShortIn">숏 진입 <kbd>3</kbd></button>
+      <button class="btn short-exit" id="btnShortOut">숏 청산 <kbd>4</kbd></button>
+    </div>
+
+    <div class="next-wrap">
+      <button class="btn next" id="btnNext">다음 1분 <kbd>Space</kbd></button>
+      <div class="next-sub" id="nextSub">–</div>
+    </div>
+  </section>
+
+  <section class="deck-result hidden" id="reviewDeck">
+    <div class="res-main">
+      <div class="res-eyebrow">Session review · 전체 세션</div>
+      <div class="res-date" id="rDate">–</div>
+    </div>
+    <div class="res-pnl">
+      <div class="v zero" id="rPnl">0.00 pt</div>
+      <div class="w" id="rWon">0원</div>
+    </div>
+    <div class="res-chips">
+      <div class="res-chip"><i>체결</i><b id="rTrades">0회</b></div>
+      <div class="res-chip"><i>승률</i><b id="rWin">–</b></div>
+      <div class="res-chip"><i>MDD</i><b id="rMdd">0.00 pt</b></div>
+      <div class="res-chip"><i>누적</i><b id="rRecord">0.00 pt</b></div>
+    </div>
+    <div class="res-actions">
+      <button class="btn ghost" id="btnSummary">결과 요약</button>
+      <button class="btn next" id="btnNew2">새 게임 시작</button>
+    </div>
+  </section>
+
+  <section class="lower">
+    <div class="panel">
+      <div class="panel-head">성과 <span class="tag" id="statTag">1계약 · 비용 없음</span></div>
+      <div class="kpis">
+        <div class="kpi"><span>실현 손익</span><b id="kRealized">0.00 pt</b><i id="kRealizedWon">0원</i></div>
+        <div class="kpi"><span>평가 손익</span><b id="kUnreal">0.00 pt</b><i id="kUnrealSub">보유 없음</i></div>
+        <div class="kpi"><span>승률</span><b id="kWin">–</b><i id="kCount">0회 체결</i></div>
+        <div class="kpi"><span>최대 낙폭</span><b id="kMdd">0.00 pt</b><i>MDD</i></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">체결 내역 <span class="tag" id="logCount">0</span></div>
+      <div class="log-list" id="logList">
+        <div class="log-empty"><span>≡</span>아직 체결이 없습니다</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer-hint">
+    <div><b>Space</b> / <b>→</b> 다음 1분 &nbsp;·&nbsp; <b>1</b> 롱 진입 &nbsp;<b>2</b> 롱 청산 &nbsp;<b>3</b> 숏 진입 &nbsp;<b>4</b> 숏 청산</div>
+    <div>체결가는 현재 1분봉 종가 · 미니 1pt = 50,000원 · 1틱 = 0.02pt(1,000원) &nbsp;·&nbsp; 08:45–15:30 KST</div>
+  </div>
+</div>
+
+<div class="modal-back" id="modalBack">
+  <div class="modal">
+    <div class="eyebrow">Session complete</div>
+    <h2>장 마감</h2>
+    <div class="mdate" id="mDate">–</div>
+    <div class="mbig zero" id="mPnl">0.00 pt</div>
+    <div class="mmoney" id="mMoney">0원</div>
+    <div class="mgrid">
+      <div><span>체결 횟수</span><b id="mTrades">0회</b></div>
+      <div><span>승률</span><b id="mWin">–</b></div>
+      <div><span>최대 낙폭</span><b id="mMdd">0.00 pt</b></div>
+      <div><span>최고 손익 거래</span><b id="mBest">–</b></div>
+    </div>
+    <div class="mrecord"><span>누적 성적</span><b id="mRecord">0.00 pt · 0게임</b></div>
+    <div class="mbtns">
+      <button class="btn next" id="mNew">새 게임 시작</button>
+      <button class="btn ghost" id="mClose">차트로 돌아가기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  /* =========================================================
+     DATA (Supabase에서 로드 — 하드코딩 없음)
+     ========================================================= */
+  const TICK = 0.02;      // mini KOSPI200 futures tick = 0.02pt (1,000 KRW)
+  const MULT = 50000;     // mini KOSPI200 futures multiplier = 50,000 KRW per pt
+  const PERIOD = 20;
+  const PRELOAD = 75;
+  const UP = '#ff5d5d';
+  const DOWN = '#3d9bff';
+  const MA_COLOR = '#f6c445';
+  const WMA_COLOR = '#a78bfa';
+  const REC_KEY = 'k200trainer.record.v1';
+  const MIN_DAY_BARS = 90;      // 서버(TRAINER_MIN_BARS)와 동일 기준
+  const DAY_CACHE_LIMIT = 8;
+
+  // 같은 출처(/trainer/)로 열면 상대경로, file://로 열면 로컬 dev 서버를 기본값으로 쓴다.
+  // ?api=https://... 로 다른 서버를 지정할 수도 있다.
+  const API_BASE = (() => {
+    const q = new URLSearchParams(location.search).get('api');
+    if (q) return q.replace(/\/+$/, '');
+    if (location.protocol === 'http:' || location.protocol === 'https:') return '';
+    return 'http://localhost:3000';
+  })();
+
+  const weekdayOf = date => '일월화수목금토'[new Date(date + 'T00:00:00').getDay()];
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  let DAYS = [];                       // [{ date, weekday, count }] — 서버에서 채움
+  const dayBarsCache = new Map();      // date → [{ min, o, h, l, c, v }]
+
+  const pad2 = n => String(n).padStart(2, '0');
+  const fmtTime = min => {
+    const t = 8 * 60 + 45 + min;
+    return pad2(Math.floor(t / 60) % 24) + ':' + pad2(t % 60);
+  };
+  const fmtP = v => v.toFixed(2);
+  const fmtPt = v => (v > 0 ? '+' : '') + v.toFixed(2);
+  const fmtWon = v => {
+    const sign = v > 0 ? '+' : v < 0 ? '-' : '';
+    return sign + Math.round(Math.abs(v)).toLocaleString('ko-KR') + '원';
+  };
+  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+
+  /* =========================================================
+     STATE
+     ========================================================= */
+  const state = {
+    daySelect: 'random',
+    day: null,
+    cursor: 0,
+    sessionNo: 0,
+    ended: false,
+    review: false,
+    position: null,          // { side, entry, entryTime, qty }
+    trades: [],              // closed trades
+    realized: 0,
+    equity: 0,
+    peak: 0,
+    mdd: 0,
+    contracts: 1,
+    costTicks: 0,
+    hideDate: true,
+    record: loadRecord()
+  };
+
+  function loadRecord() {
+    try {
+      const r = JSON.parse(localStorage.getItem(REC_KEY));
+      if (r && typeof r.pnl === 'number') return r;
+    } catch (e) {}
+    return { games: 0, pnl: 0, wins: 0, losses: 0 };
+  }
+  function saveRecord() {
+    try { localStorage.setItem(REC_KEY, JSON.stringify(state.record)); } catch (e) {}
+  }
+
+  /* =========================================================
+     INDICATORS
+     ========================================================= */
+  function sma(values, period) {
+    const out = new Array(values.length).fill(null);
+    let sum = 0;
+    for (let i = 0; i < values.length; i++) {
+      sum += values[i];
+      if (i >= period) sum -= values[i - period];
+      if (i >= period - 1) out[i] = sum / period;
+    }
+    return out;
+  }
+
+  function wma(values, period) {
+    const out = new Array(values.length).fill(null);
+    const denom = period * (period + 1) / 2;
+    let weighted = 0; // Σ (period - k) * v[i - k]
+    let plain = 0;    // Σ v[i - k] over the previous window
+    for (let i = 0; i < values.length; i++) {
+      // shift every existing weight down by one, give the newest bar `period`
+      weighted += period * values[i] - plain;
+      plain += values[i];
+      if (i >= period) plain -= values[i - period];
+      if (i >= period - 1) out[i] = weighted / denom;
+    }
+    return out;
+  }
+
+  /* =========================================================
+     SERIES
+     ========================================================= */
+  function aggregate3(bars, markPartial) {
+    const out = [];
+    let cur = null, curBucket = -1;
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i];
+      const bucket = Math.floor(b.min / 3);
+      if (!cur || bucket !== curBucket) {
+        cur = { min: b.min, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v, count: 1, partial: false };
+        out.push(cur);
+        curBucket = bucket;
+      } else {
+        if (b.h > cur.h) cur.h = b.h;
+        if (b.l < cur.l) cur.l = b.l;
+        cur.c = b.c;
+        cur.v += b.v;
+        cur.count++;
+      }
+    }
+    if (markPartial && out.length) out[out.length - 1].partial = out[out.length - 1].count < 3;
+    return out;
+  }
+
+  function makeSeries(mode) {
+    if (!state.day) return [];
+    const n = state.cursor + 1;
+    const bars = state.day.bars;
+    if (mode === 1) return bars.slice(0, n);
+    return aggregate3(bars.slice(0, n), true);
+  }
+
+  // Prior-session warm-up is intentionally not used: on large gap opens its
+  // values distort the price scale, so indicators use the current session only.
+
+  /* =========================================================
+     CHART
+     ========================================================= */
+  class Chart {
+    constructor(canvas, mode) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.mode = mode;
+      this.hover = null;
+      this.pad = { l: 8, r: 66, t: 12, b: 24 };
+      canvas.addEventListener('mousemove', e => {
+        const r = canvas.getBoundingClientRect();
+        this.hover = { x: e.clientX - r.left, y: e.clientY - r.top };
+        this.draw();
+      });
+      canvas.addEventListener('mouseleave', () => {
+        this.hover = null;
+        this.draw();
+      });
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => this.draw()).observe(canvas.parentElement);
+      } else {
+        window.addEventListener('resize', () => this.draw());
+      }
+    }
+
+    draw() {
+      const canvas = this.canvas, ctx = this.ctx;
+      const rect = canvas.getBoundingClientRect();
+      if (rect.width < 20 || rect.height < 20) return;
+      const dpr = window.devicePixelRatio || 1;
+      const W = rect.width, H = rect.height;
+      if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+        canvas.width = Math.round(W * dpr);
+        canvas.height = Math.round(H * dpr);
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, W, H);
+
+      const series = makeSeries(this.mode);
+      const P = this.pad;
+      const plotW = W - P.l - P.r;
+      const plotH = H - P.t - P.b;
+      if (!series.length || plotW < 30 || plotH < 30) return;
+
+      const closes = series.map(b => b.c);
+      const ma = sma(closes, PERIOD);
+      const wmaLine = wma(closes, PERIOD);
+      const visibleMax = this.mode === 1 ? 90 : 60;
+      const visibleMin = this.mode === 1 ? 30 : 25;
+      const visibleCount = state.review ? series.length : clamp(series.length, visibleMin, visibleMax);
+      const start = Math.max(0, series.length - visibleCount);
+      const last = series[series.length - 1];
+
+      // ---- y scale ----
+      let lo = Infinity, hi = -Infinity;
+      const consider = v => { if (v < lo) lo = v; if (v > hi) hi = v; };
+      for (let i = start; i < series.length; i++) {
+        consider(series[i].l);
+        consider(series[i].h);
+        if (ma[i] != null) consider(ma[i]);
+        if (wmaLine[i] != null) consider(wmaLine[i]);
+      }
+      if (state.position) consider(state.position.entry);
+      if (!isFinite(lo)) return;
+      const span = (hi - lo) || Math.max(1, hi * 0.001);
+      lo -= span * 0.09;
+      hi += span * 0.09;
+
+      const y = v => P.t + (hi - v) / (hi - lo) * plotH;
+      const slot = plotW / visibleCount;
+      const x = i => P.l + plotW - (series.length - i - 0.5) * slot;
+      const plotRight = P.l + plotW;
+
+      const mono = '11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      const monoBold = '700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+
+      // ---- grid (horizontal) ----
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = mono;
+      for (let k = 0; k <= 4; k++) {
+        const v = lo + (hi - lo) * k / 4;
+        const yy = Math.round(y(v)) + 0.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.045)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(P.l, yy);
+        ctx.lineTo(plotRight, yy);
+        ctx.stroke();
+        ctx.fillStyle = '#6d7a8e';
+        ctx.fillText(fmtP(v), plotRight + 8, yy);
+      }
+
+      // ---- time grid / labels ----
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.font = mono;
+      let lastBucket = -1;
+      let lastLabelX = -1e9;
+      for (let i = start; i < series.length; i++) {
+        const b = series[i];
+        const bucket = Math.floor(b.min / 30);
+        if (bucket === lastBucket) continue;
+        lastBucket = bucket;
+        const xx = x(i);
+        if (xx < P.l + 18 || xx > plotRight - 22) continue;
+        ctx.strokeStyle = 'rgba(255,255,255,0.035)';
+        ctx.beginPath();
+        ctx.moveTo(xx, P.t);
+        ctx.lineTo(xx, P.t + plotH);
+        ctx.stroke();
+        // keep labels from piling up (gaps create off-grid 30m boundaries)
+        if (xx - lastLabelX < 54) continue;
+        // hide static label when the crosshair label occupies the same spot
+        if (this.hover && Math.abs(xx - this.hover.x) < 30) continue;
+        ctx.fillStyle = '#59667a';
+        ctx.fillText(fmtTime(b.min), xx, P.t + plotH + 7);
+        lastLabelX = xx;
+      }
+
+      // ---- candles ----
+      const bw = Math.max(1, Math.min(12, slot * 0.62));
+      for (let i = start; i < series.length; i++) {
+        const b = series[i];
+        const up = b.c >= b.o;
+        const col = up ? UP : DOWN;
+        const xx = x(i);
+        ctx.globalAlpha = b.partial ? 0.5 : 1;
+        ctx.strokeStyle = col;
+        ctx.fillStyle = col;
+        ctx.lineWidth = 1;
+        const cx = Math.round(xx) + 0.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, y(b.h));
+        ctx.lineTo(cx, y(b.l));
+        ctx.stroke();
+        const yo = y(b.o), yc = y(b.c);
+        const top = Math.min(yo, yc);
+        const hgt = Math.max(1, Math.abs(yc - yo));
+        ctx.fillRect(xx - bw / 2, top, bw, hgt);
+        ctx.globalAlpha = 1;
+      }
+
+      // ---- MA lines ----
+      const drawLine = (arr, color, width, dash) => {
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.setLineDash(dash || []);
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 6;
+        ctx.globalAlpha = 0.95;
+        ctx.beginPath();
+        let started = false;
+        for (let i = start; i < arr.length; i++) {
+          const v = arr[i];
+          if (v == null) { started = false; continue; }
+          const xx = x(i), yy = y(v);
+          if (!started) { ctx.moveTo(xx, yy); started = true; }
+          else ctx.lineTo(xx, yy);
+        }
+        ctx.stroke();
+        ctx.restore();
+      };
+      drawLine(ma, MA_COLOR, 1.7);
+      drawLine(wmaLine, WMA_COLOR, 1.7, []);
+
+      // ---- last price line ----
+      const lastY = y(last.c);
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(160,178,200,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(P.l, lastY);
+      ctx.lineTo(plotRight, lastY);
+      ctx.stroke();
+      ctx.restore();
+      drawAxisBadge(ctx, plotRight + 3, lastY, fmtP(last.c), last.c >= last.o ? UP : DOWN, P.r - 5, W);
+
+      // ---- position entry line ----
+      if (state.position) {
+        const p = state.position;
+        const ey = y(p.entry);
+        if (ey > P.t - 2 && ey < P.t + plotH + 2) {
+          const col = p.side === 'long' ? '#ff7d7d' : '#6bb3ff';
+          ctx.save();
+          ctx.setLineDash([7, 4]);
+          ctx.strokeStyle = col;
+          ctx.globalAlpha = 0.75;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(P.l, ey);
+          ctx.lineTo(plotRight, ey);
+          ctx.stroke();
+          ctx.restore();
+
+          const label = (p.side === 'long' ? 'LONG ' : 'SHORT ') + fmtP(p.entry);
+          ctx.font = monoBold;
+          const tw = ctx.measureText(label).width;
+          const bx = P.l + 4, by = ey - 8, bh = 16;
+          roundRect(ctx, bx, by, tw + 12, bh, 4);
+          ctx.fillStyle = p.side === 'long' ? 'rgba(229,72,77,0.92)' : 'rgba(47,127,224,0.92)';
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(label, bx + 6, ey + 0.5);
+        }
+      }
+
+      // ---- trade markers (review) ----
+      if (state.review && state.trades.length) {
+        drawTradeMarkers(ctx, this.mode, series, x, y, P, plotRight, plotH);
+      }
+
+      // ---- crosshair ----
+      if (this.hover) {
+        const hx = this.hover.x, hy = this.hover.y;
+        if (hx >= P.l && hx <= plotRight && hy >= P.t && hy <= P.t + plotH) {
+          const rel = plotRight - hx;
+          let idx = Math.round(series.length - 0.5 - rel / slot);
+          idx = clamp(idx, start, series.length - 1);
+          const b = series[idx];
+          const cx = x(idx);
+
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(160,178,200,0.38)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(cx, P.t);
+          ctx.lineTo(cx, P.t + plotH);
+          ctx.moveTo(P.l, hy);
+          ctx.lineTo(plotRight, hy);
+          ctx.stroke();
+          ctx.restore();
+
+          // x label
+          ctx.font = mono;
+          const tlab = fmtTime(b.min);
+          const tw = ctx.measureText(tlab).width;
+          roundRect(ctx, cx - tw / 2 - 5, P.t + plotH + 2, tw + 10, 16, 4);
+          ctx.fillStyle = 'rgba(45,56,74,0.95)';
+          ctx.fill();
+          ctx.fillStyle = '#cfdaea';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(tlab, cx, P.t + plotH + 10);
+
+          // y label
+          const hv = hi - (hy - P.t) / plotH * (hi - lo);
+          const ylab = fmtP(hv);
+          ctx.font = mono;
+          const yw = Math.max(52, ctx.measureText(ylab).width + 12);
+          roundRect(ctx, plotRight + 2, hy - 8, Math.min(yw, P.r - 4), 16, 4);
+          ctx.fillStyle = 'rgba(45,56,74,0.95)';
+          ctx.fill();
+          ctx.fillStyle = '#cfdaea';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(ylab, plotRight + 8, hy + 0.5);
+
+          // tooltip
+          const lines = [
+            ['시', fmtP(b.o), '#cfdaea'],
+            ['고', fmtP(b.h), '#cfdaea'],
+            ['저', fmtP(b.l), '#cfdaea'],
+            ['종', fmtP(b.c), b.c >= b.o ? UP : DOWN]
+          ];
+          const tw2 = 118, th2 = 20 + lines.length * 14 + 6;
+          let tx = hx + 14, ty = hy - th2 - 10;
+          if (tx + tw2 > plotRight) tx = hx - tw2 - 14;
+          if (tx < P.l) tx = P.l + 4;
+          if (ty < P.t) ty = hy + 14;
+          if (ty + th2 > P.t + plotH) ty = P.t + plotH - th2 - 2;
+
+          roundRect(ctx, tx, ty, tw2, th2, 6);
+          ctx.fillStyle = 'rgba(10,15,24,0.94)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.font = monoBold;
+          ctx.fillStyle = '#9fb0c6';
+          ctx.fillText(tlab, tx + 10, ty + 12);
+          ctx.font = mono;
+          let ly = ty + 28;
+          for (const [k, v, c] of lines) {
+            ctx.fillStyle = '#6d7a8e';
+            ctx.fillText(k, tx + 10, ly);
+            ctx.fillStyle = c;
+            ctx.textAlign = 'right';
+            ctx.fillText(v, tx + tw2 - 10, ly);
+            ctx.textAlign = 'left';
+            ly += 14;
+          }
+        }
+      }
+
+      // ---- watermark when the indicator has no value yet ----
+      if (ma[ma.length - 1] == null) {
+        ctx.font = '11px "Malgun Gothic", system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('MA20 / WMA20 · 데이터 20봉 필요', P.l + plotW / 2, P.t + 18);
+      }
+    }
+  }
+
+  function drawAxisBadge(ctx, x, y, text, color, maxW, canvasW) {
+    ctx.save();
+    ctx.font = '700 10.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    const w = Math.min(maxW, Math.max(48, ctx.measureText(text).width + 12));
+    const bx = Math.min(x, canvasW - w - 1);
+    roundRect(ctx, bx, y - 9, w, 18, 4);
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.92;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, bx + w / 2, y + 0.5);
+    ctx.restore();
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  /* =========================================================
+     REVIEW MARKERS
+     ========================================================= */
+  function tradeBarIndex(mode, series, min) {
+    if (mode === 1) {
+      for (let i = series.length - 1; i >= 0; i--) if (series[i].min === min) return i;
+      return -1;
+    }
+    const bucket = Math.floor(min / 3);
+    for (let i = series.length - 1; i >= 0; i--) {
+      if (Math.floor(series[i].min / 3) === bucket) return i;
+    }
+    return -1;
+  }
+
+  function drawTradeMarkers(ctx, mode, series, x, y, P, plotRight, plotH) {
+    const top = P.t, bottom = P.t + plotH;
+    ctx.save();
+    ctx.font = '700 9px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    for (const t of state.trades) {
+      const ei = tradeBarIndex(mode, series, t.entryMin);
+      const xi = tradeBarIndex(mode, series, t.exitMin);
+      if (ei < 0 || xi < 0) continue;
+
+      const enX = x(ei), enY = y(t.entry);
+      const exX = x(xi), exY = y(t.exit);
+      const col = t.pnl > 0 ? '#ff6b6b' : t.pnl < 0 ? '#4d9dff' : '#a9b8ca';
+
+      // entry → exit connector
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = 0.7;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(enX, enY);
+      ctx.lineTo(exX, exY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+
+      // entry triangle (long ▲ under price / short ▼ above price)
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      if (t.side === 'long') {
+        ctx.moveTo(enX, enY - 0.5);
+        ctx.lineTo(enX - 5.2, enY + 8.5);
+        ctx.lineTo(enX + 5.2, enY + 8.5);
+      } else {
+        ctx.moveTo(enX, enY + 0.5);
+        ctx.lineTo(enX - 5.2, enY - 8.5);
+        ctx.lineTo(enX + 5.2, enY - 8.5);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(8,11,18,.85)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // exit square
+      ctx.fillStyle = col;
+      ctx.fillRect(exX - 4, exY - 4, 8, 8);
+      ctx.strokeStyle = 'rgba(8,11,18,.85)';
+      ctx.strokeRect(exX - 4, exY - 4, 8, 8);
+
+      // trade number tag
+      const label = String(t.num);
+      const lw = ctx.measureText(label).width + 9;
+      let lx = clamp(enX - lw / 2, P.l + 1, plotRight - lw - 1);
+      let ly = t.side === 'long' ? enY + 11 : enY - 25;
+      ly = clamp(ly, top + 1, bottom - 15);
+      roundRect(ctx, lx, ly, lw, 14, 3);
+      ctx.fillStyle = 'rgba(8,11,18,.88)';
+      ctx.fill();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = col;
+      ctx.fillText(label, lx + lw / 2, ly + 7);
+    }
+
+    // compact legend over a soft pill
+    const legend = '▲ 롱 진입    ▼ 숏 진입    ■ 청산    숫자 = 체결 순서';
+    ctx.font = '10px "Malgun Gothic", system-ui, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const legendW = ctx.measureText(legend).width;
+    roundRect(ctx, P.l + 1, P.t + 1, legendW + 16, 19, 4);
+    ctx.fillStyle = 'rgba(8,11,18,.66)';
+    ctx.fill();
+    ctx.fillStyle = 'rgba(200,214,232,.62)';
+    ctx.fillText(legend, P.l + 9, P.t + 10.5);
+    ctx.restore();
+  }
+
+  /* =========================================================
+     DOM
+     ========================================================= */
+  const $ = s => document.querySelector(s);
+  const el = {
+    hSession: $('#hSession'), hClock: $('#hClock'), hProgress: $('#hProgress'), hRecord: $('#hRecord'),
+    progressFill: $('#progressFill'),
+    ohlc3: $('#ohlc3'), ohlc1: $('#ohlc1'),
+    playDeck: $('#playDeck'), reviewDeck: $('#reviewDeck'),
+    rDate: $('#rDate'), rPnl: $('#rPnl'), rWon: $('#rWon'),
+    rTrades: $('#rTrades'), rWin: $('#rWin'), rMdd: $('#rMdd'), rRecord: $('#rRecord'),
+    btnSummary: $('#btnSummary'), btnNew2: $('#btnNew2'),
+    posCard: $('#posCard'), posMain: $('#posMain'), posSub: $('#posSub'),
+    btnLongIn: $('#btnLongIn'), btnLongOut: $('#btnLongOut'),
+    btnShortIn: $('#btnShortIn'), btnShortOut: $('#btnShortOut'),
+    btnNext: $('#btnNext'), nextSub: $('#nextSub'), btnNew: $('#btnNew'),
+    kRealized: $('#kRealized'), kRealizedWon: $('#kRealizedWon'),
+    kUnreal: $('#kUnreal'), kUnrealSub: $('#kUnrealSub'),
+    kWin: $('#kWin'), kCount: $('#kCount'), kMdd: $('#kMdd'),
+    logList: $('#logList'), logCount: $('#logCount'), statTag: $('#statTag'),
+    optHideDate: $('#optHideDate'), optCost: $('#optCost'), optQty: $('#optQty'),
+    optDay: $('#optDay'), dataStatus: $('#dataStatus'), dataStatusText: $('#dataStatusText'),
+    btnRetry: $('#btnRetry'),
+    modalBack: $('#modalBack'), mDate: $('#mDate'), mPnl: $('#mPnl'), mMoney: $('#mMoney'),
+    mTrades: $('#mTrades'), mWin: $('#mWin'), mMdd: $('#mMdd'), mBest: $('#mBest'),
+    mRecord: $('#mRecord'), mNew: $('#mNew'), mClose: $('#mClose')
+  };
+
+  const chart3 = new Chart(document.getElementById('c3'), 3);
+  const chart1 = new Chart(document.getElementById('c1'), 1);
+  const charts = [chart3, chart1];
+
+  /* =========================================================
+     DATA LOADING (Supabase)
+     ========================================================= */
+  let busy = false;
+
+  function setStatus(msg, opts) {
+    const box = el.dataStatus;
+    if (!msg) { box.hidden = true; box.classList.remove('error'); el.btnRetry.hidden = true; return; }
+    box.hidden = false;
+    box.classList.toggle('error', !!(opts && opts.error));
+    el.dataStatusText.innerHTML = msg;
+    el.btnRetry.hidden = !(opts && opts.retry);
+  }
+
+  async function apiGet(path) {
+    let res;
+    try {
+      res = await fetch(API_BASE + path, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    } catch (e) {
+      throw new Error('API 서버에 연결할 수 없습니다. ' +
+        (location.protocol === 'file:' ? 'http://localhost:3000/trainer/ 로 접속해 주세요.' : '서버 상태를 확인해 주세요.'));
+    }
+    if (res.ok) return res.json();
+    let message = '서버 오류 ' + res.status;
+    let needsLogin = res.status === 401;
+    try {
+      const body = await res.json();
+      if (body && body.error) message = body.error;
+      if (body && body.needsLogin) needsLogin = true;
+    } catch (e) {}
+    const err = new Error(message);
+    err.needsLogin = needsLogin;
+    throw err;
+  }
+
+  async function loadDays() {
+    const data = await apiGet('/api/trainer/days');
+    const list = Array.isArray(data && data.days) ? data.days : [];
+    DAYS = list
+      .filter(d => d && typeof d.date === 'string')
+      .map(d => ({ date: d.date, weekday: weekdayOf(d.date), count: Number(d.count) || 0 }));
+    if (!DAYS.length) throw new Error('훈련할 일자 데이터가 없습니다. 수집 상태를 확인해 주세요.');
+    return DAYS;
+  }
+
+  async function loadDayBars(date) {
+    const cached = dayBarsCache.get(date);
+    if (cached) return cached;
+    const data = await apiGet('/api/trainer/day?date=' + encodeURIComponent(date));
+    const raw = Array.isArray(data && data.bars) ? data.bars : [];
+    const bars = raw
+      .filter(b => Array.isArray(b) && b.length >= 6 && Number.isFinite(b[0]))
+      .map(b => ({ min: b[0], o: b[1], h: b[2], l: b[3], c: b[4], v: b[5] }))
+      .sort((a, b) => a.min - b.min);
+    if (bars.length < MIN_DAY_BARS) {
+      throw new Error(date + ' 봉 데이터가 부족합니다 (' + bars.length + '개).');
+    }
+    dayBarsCache.set(date, bars);
+    if (dayBarsCache.size > DAY_CACHE_LIMIT) dayBarsCache.delete(dayBarsCache.keys().next().value);
+    return bars;
+  }
+
+  function populateDaySelect() {
+    const prev = el.optDay.value;
+    el.optDay.innerHTML = '<option value="random">랜덤</option>' +
+      DAYS.map(d => '<option value="' + d.date + '">' + d.date + ' (' + d.weekday + ')</option>').join('');
+    el.optDay.value = DAYS.some(d => d.date === prev) ? prev : 'random';
+  }
+
+  function showLoadError(err) {
+    const message = (err && err.message) ? err.message : '데이터를 불러오지 못했습니다.';
+    const login = (err && err.needsLogin)
+      ? ' <a href="/login" target="_blank" rel="noreferrer">로그인 열기</a>'
+      : '';
+    setStatus('⚠ ' + esc(message) + login, { error: true, retry: true });
+  }
+
+  function setLoading(on) {
+    busy = on;
+    el.btnNew.disabled = on;
+    el.btnNew2.disabled = on;
+    el.mNew.disabled = on;
+    el.optDay.disabled = on;
+    el.btnNext.disabled = on || !state.day || state.ended;
+    if (on) {
+      el.btnLongIn.disabled = true;
+      el.btnLongOut.disabled = true;
+      el.btnShortIn.disabled = true;
+      el.btnShortOut.disabled = true;
+    }
+  }
+
+  async function boot() {
+    if (busy) return;
+    busy = true;
+    setLoading(true);
+    setStatus('일자 목록을 불러오는 중…');
+    let loaded = false;
+    try {
+      await loadDays();
+      populateDaySelect();
+      loaded = true;
+    } catch (err) {
+      showLoadError(err);
+    } finally {
+      busy = false;
+      setLoading(false);
+    }
+    if (loaded) await newGame();
+  }
+
+  /* =========================================================
+     GAME
+     ========================================================= */
+  function pickRandomDate() {
+    if (!DAYS.length) return null;
+    if (DAYS.length === 1) return DAYS[0].date;
+    const current = state.day && state.day.date;
+    let pick = DAYS[Math.floor(Math.random() * DAYS.length)].date;
+    for (let i = 0; i < 8 && pick === current; i++) {
+      pick = DAYS[Math.floor(Math.random() * DAYS.length)].date;
+    }
+    return pick;
+  }
+
+  async function newGame(preferDate) {
+    if (busy) return;
+    if (!DAYS.length) { await boot(); return; }
+    if (state.position) {
+      if (!confirm('진행 중인 포지션이 있습니다. 새 게임을 시작할까요?')) {
+        el.optDay.value = state.daySelect;
+        return;
+      }
+    }
+    const explicit = !!(preferDate && DAYS.some(d => d.date === preferDate));
+    const target = explicit ? preferDate : pickRandomDate();
+
+    setLoading(true);
+    setStatus(explicit ? '불러오는 중… ' + target : '랜덤 일자를 불러오는 중…');
+    try {
+      const bars = await loadDayBars(target);
+      state.day = { date: target, weekday: weekdayOf(target), bars };
+      state.daySelect = explicit ? target : 'random';
+      state.cursor = Math.min(PRELOAD - 1, bars.length - 1);
+      state.sessionNo++;
+      state.ended = false;
+      state.review = false;
+      state.position = null;
+      state.trades = [];
+      state.realized = 0;
+      state.equity = 0;
+      state.peak = 0;
+      state.mdd = 0;
+      state.contracts = parseInt(el.optQty.value, 10) || 1;
+      state.costTicks = el.optCost.checked ? 1 : 0;
+      state.hideDate = el.optHideDate.checked;
+
+      el.optDay.value = state.daySelect;
+      charts.forEach(c => { c.hover = null; });
+      hideModal();
+      setStatus('');
+      renderAll();
+      drawCharts();
+    } catch (err) {
+      showLoadError(err);
+      if (state.day) renderAll();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function lastPrice() {
+    return state.day.bars[state.cursor].c;
+  }
+  function currentMin() {
+    return state.day.bars[state.cursor].min;
+  }
+
+  function openPosition(side) {
+    if (state.ended || state.position || !state.day) return;
+    const px = lastPrice();
+    state.position = {
+      side,
+      entry: px,
+      entryTime: fmtTime(currentMin()),
+      entryMin: currentMin(),
+      entryBar: state.cursor,
+      qty: state.contracts
+    };
+    renderAll();
+    drawCharts();
+  }
+
+  function closePosition(reason) {
+    const p = state.position;
+    if (!p) return;
+    const px = lastPrice();
+    const dir = p.side === 'long' ? 1 : -1;
+    const gross = (px - p.entry) * dir;
+    const cost = state.costTicks * TICK * 2;
+    const net = gross - cost;
+    const pnl = net * p.qty;
+
+    state.trades.push({
+      side: p.side,
+      entry: p.entry,
+      exit: px,
+      entryTime: p.entryTime,
+      exitTime: fmtTime(currentMin()),
+      entryMin: p.entryMin,
+      entryBar: p.entryBar,
+      exitMin: currentMin(),
+      exitBar: state.cursor,
+      num: state.trades.length + 1,
+      pnl,
+      reason: reason || '수동 청산'
+    });
+
+    state.realized += pnl;
+    state.equity += pnl;
+    state.peak = Math.max(state.peak, state.equity);
+    state.mdd = Math.min(state.mdd, state.equity - state.peak);
+    state.position = null;
+    renderAll();
+    drawCharts();
+  }
+
+  function nextMinute() {
+    if (!state.day || state.ended) return;
+    if (state.cursor >= state.day.bars.length - 1) return;
+    state.cursor++;
+
+    if (state.cursor >= state.day.bars.length - 1) {
+      // final bar of the session
+      if (state.position) closePosition('장 마감');
+      state.ended = true;
+      state.review = true;
+      renderAll();
+      drawCharts();
+      finishSession();
+      return;
+    }
+    renderAll();
+    drawCharts();
+  }
+
+  /* =========================================================
+     RENDER
+     ========================================================= */
+  function renderAll() {
+    if (!state.day) return;
+    const total = state.day.bars.length;
+    const done = state.cursor + 1;
+
+    // header
+    const revealDate = !state.hideDate || state.review;
+    el.hSession.textContent = revealDate
+      ? state.day.date + ' (' + state.day.weekday + ')'
+      : '#' + String(state.sessionNo).padStart(2, '0') + ' (숨김)';
+    el.hSession.title = state.hideDate ? '날짜가 숨겨져 있습니다' : '';
+    el.hClock.textContent = fmtTime(currentMin());
+    el.hProgress.textContent = done + '/' + total;
+    el.progressFill.style.width = (done / total * 100).toFixed(2) + '%';
+
+    el.playDeck.classList.toggle('hidden', state.review);
+    el.reviewDeck.classList.toggle('hidden', !state.review);
+    renderReview();
+
+    const rec = state.record;
+    el.hRecord.querySelector('b').textContent = fmtPt(rec.pnl) + ' pt';
+    el.hRecord.querySelector('b').style.color = rec.pnl > 0 ? '#ff8b8b' : rec.pnl < 0 ? '#7cb8ff' : '';
+
+    // OHLC strips
+    renderOhlc(el.ohlc3, chart3);
+    renderOhlc(el.ohlc1, chart1);
+
+    // position
+    renderPosition();
+
+    // stats
+    renderStats();
+
+    // log
+    renderLog();
+
+    // buttons
+    const pos = state.position;
+    el.btnLongIn.disabled = !!pos || state.ended;
+    el.btnLongOut.disabled = !(pos && pos.side === 'long') || state.ended;
+    el.btnShortIn.disabled = !!pos || state.ended;
+    el.btnShortOut.disabled = !(pos && pos.side === 'short') || state.ended;
+    el.btnNext.disabled = state.ended;
+    el.btnNext.classList.toggle('ended', state.ended);
+    el.btnNext.innerHTML = state.ended
+      ? '장 종료 <kbd>–</kbd>'
+      : '다음 1분 <kbd>Space</kbd>';
+
+    // settings that would desync an open position
+    el.optQty.disabled = !!pos;
+    el.optCost.disabled = !!pos;
+    el.optQty.style.opacity = pos ? '.45' : '';
+    el.optCost.parentElement.style.opacity = pos ? '.45' : '';
+    el.optCost.parentElement.style.pointerEvents = pos ? 'none' : '';
+
+    el.nextSub.textContent = state.ended
+      ? '세션 종료 · 새 게임을 시작하세요'
+      : (total - done) + '분 남음 · ' + done + '/' + total + ' 진행';
+
+    el.statTag.textContent = state.contracts + '계약 · ' + (state.costTicks ? '비용 1틱' : '비용 없음');
+  }
+
+  function renderOhlc(target, chart) {
+    const series = makeSeries(chart.mode);
+    if (!series.length) { target.innerHTML = ''; return; }
+    const b = series[series.length - 1];
+    const prevClose = series.length > 1 ? series[series.length - 2].c : b.o;
+    const diff = b.c - prevClose;
+    const pct = prevClose ? diff / prevClose * 100 : 0;
+    const cls = diff > 0 ? 'up' : diff < 0 ? 'down' : 'flat';
+    const arrow = diff > 0 ? '▲' : diff < 0 ? '▼' : '–';
+    target.innerHTML =
+      (b.partial ? '<span class="live" title="형성 중인 봉"></span>' : '') +
+      '<span class="tm">' + fmtTime(b.min) + '</span>' +
+      '<span>시 <b>' + fmtP(b.o) + '</b></span>' +
+      '<span>고 <b>' + fmtP(b.h) + '</b></span>' +
+      '<span>저 <b>' + fmtP(b.l) + '</b></span>' +
+      '<span>종 <b>' + fmtP(b.c) + '</b></span>' +
+      '<span class="chg ' + cls + '">' + arrow + ' ' + Math.abs(diff).toFixed(2) + ' (' + pct.toFixed(2) + '%)</span>';
+  }
+
+  function renderPosition() {
+    const p = state.position;
+    el.posCard.classList.toggle('long', !!p && p.side === 'long');
+    el.posCard.classList.toggle('short', !!p && p.side === 'short');
+
+    if (!p) {
+      el.posMain.innerHTML = '포지션 없음';
+      el.posSub.textContent = '롱 / 숏 버튼으로 진입하세요';
+      return;
+    }
+    const px = lastPrice();
+    const dir = p.side === 'long' ? 1 : -1;
+    const diff = (px - p.entry) * dir;
+    const pnl = diff * p.qty;
+    const cls = pnl > 0 ? 'up' : pnl < 0 ? 'down' : 'flat';
+    const sign = pnl > 0 ? '+' : '';
+    el.posMain.innerHTML =
+      '<span class="side ' + p.side + '">' + (p.side === 'long' ? '롱' : '숏') + '</span>' +
+      p.qty + '계약 <span style="color:#8a97ab;font-weight:600;font-size:12px">@ ' + fmtP(p.entry) + '</span>';
+    el.posSub.innerHTML =
+      p.entryTime + ' 진입 · 현재 ' + fmtP(px) +
+      ' · <span class="' + cls + '">' + sign + pnl.toFixed(2) + ' pt (' + fmtWon(pnl * MULT) + ')</span>';
+  }
+
+  function renderStats() {
+    const closed = state.trades.length;
+    const wins = state.trades.filter(t => t.pnl > 0).length;
+    const losses = state.trades.filter(t => t.pnl < 0).length;
+    const winRate = closed ? Math.round(wins / closed * 100) : null;
+
+    el.kRealized.textContent = fmtPt(state.realized) + ' pt';
+    el.kRealized.className = state.realized > 0 ? 'pos' : state.realized < 0 ? 'neg' : '';
+    el.kRealizedWon.textContent = fmtWon(state.realized * MULT);
+
+    let unreal = 0;
+    if (state.position) {
+      const p = state.position;
+      const dir = p.side === 'long' ? 1 : -1;
+      unreal = (lastPrice() - p.entry) * dir * p.qty;
+    }
+    el.kUnreal.textContent = fmtPt(unreal) + ' pt';
+    el.kUnreal.className = unreal > 0 ? 'pos' : unreal < 0 ? 'neg' : '';
+    el.kUnrealSub.textContent = state.position ? '보유 중 · ' + fmtWon(unreal * MULT) : '보유 없음';
+
+    el.kWin.textContent = winRate === null ? '–' : winRate + '%';
+    el.kWin.className = winRate === null ? '' : winRate >= 50 ? 'pos' : 'neg';
+    el.kCount.textContent = closed + '회 체결 · ' + wins + '승 ' + losses + '패';
+
+    el.kMdd.textContent = fmtPt(state.mdd) + ' pt';
+    el.kMdd.className = state.mdd < 0 ? 'neg' : '';
+  }
+
+  function renderLog() {
+    const rows = [];
+    if (state.position) {
+      const p = state.position;
+      const dir = p.side === 'long' ? 1 : -1;
+      const pnl = (lastPrice() - p.entry) * dir * p.qty;
+      rows.push(
+        '<div class="log-row log-open">' +
+        '<span class="log-side ' + p.side + '">' + (p.side === 'long' ? '롱' : '숏') + '</span>' +
+        '<span class="log-time">' + p.entryTime + '</span>' +
+        '<span class="log-px">' + fmtP(p.entry) + ' <span class="arrow">→</span> 보유중</span>' +
+        '<span class="log-pnl ' + (pnl > 0 ? 'pos' : pnl < 0 ? 'neg' : 'zero') + '">' + fmtPt(pnl) + '</span>' +
+        '</div>'
+      );
+    }
+    const closed = state.trades.slice().reverse();
+    for (const t of closed) {
+      const cls = t.pnl > 0 ? 'pos' : t.pnl < 0 ? 'neg' : 'zero';
+      rows.push(
+        '<div class="log-row">' +
+        '<span class="log-side ' + t.side + '">' + (t.side === 'long' ? '롱' : '숏') + '</span>' +
+        '<span class="log-time">' + t.exitTime + '</span>' +
+        '<span class="log-px">' + fmtP(t.entry) + '<span class="arrow">→</span>' + fmtP(t.exit) + '</span>' +
+        '<span class="log-pnl ' + cls + '">' + fmtPt(t.pnl) + '</span>' +
+        '</div>'
+      );
+    }
+    el.logCount.textContent = String(state.trades.length);
+    if (!rows.length) {
+      el.logList.innerHTML = '<div class="log-empty"><span>≡</span>아직 체결이 없습니다</div>';
+    } else {
+      el.logList.innerHTML = rows.join('');
+    }
+  }
+
+  function drawCharts() {
+    charts.forEach(c => c.draw());
+  }
+
+  function renderReview() {
+    if (!state.review) return;
+    const trades = state.trades;
+    const wins = trades.filter(t => t.pnl > 0).length;
+    el.rDate.textContent = state.day.date + ' (' + state.day.weekday + ')';
+    el.rPnl.textContent = fmtPt(state.realized) + ' pt';
+    el.rPnl.className = 'v ' + (state.realized > 0 ? 'pos' : state.realized < 0 ? 'neg' : 'zero');
+    el.rWon.textContent = fmtWon(state.realized * MULT);
+    el.rTrades.textContent = trades.length + '회';
+    el.rWin.textContent = trades.length ? Math.round(wins / trades.length * 100) + '%' : '–';
+    el.rMdd.textContent = fmtPt(state.mdd) + ' pt';
+    el.rRecord.textContent = fmtPt(state.record.pnl) + ' pt';
+    el.reviewDeck.classList.toggle('pos', state.realized > 0);
+    el.reviewDeck.classList.toggle('neg', state.realized < 0);
+  }
+
+  /* =========================================================
+     SUMMARY
+     ========================================================= */
+  function finishSession() {
+    const trades = state.trades;
+    const wins = trades.filter(t => t.pnl > 0).length;
+    const winRate = trades.length ? Math.round(wins / trades.length * 100) : 0;
+    const best = trades.length ? Math.max.apply(null, trades.map(t => t.pnl)) : null;
+
+    // update cumulative record once
+    state.record.games += 1;
+    state.record.pnl += state.realized;
+    state.record.wins += wins;
+    state.record.losses += trades.filter(t => t.pnl < 0).length;
+    saveRecord();
+    el.hRecord.querySelector('b').textContent = fmtPt(state.record.pnl) + ' pt';
+
+    el.mDate.textContent = state.day.date + ' (' + state.day.weekday + ')';
+    el.mPnl.textContent = fmtPt(state.realized) + ' pt';
+    el.mPnl.className = 'mbig ' + (state.realized > 0 ? 'pos' : state.realized < 0 ? 'neg' : 'zero');
+    el.mMoney.textContent = fmtWon(state.realized * MULT);
+    el.mTrades.textContent = trades.length + '회';
+    el.mWin.textContent = trades.length ? winRate + '%' : '–';
+    el.mMdd.textContent = fmtPt(state.mdd) + ' pt';
+    el.mBest.textContent = best === null ? '–' : fmtPt(best) + ' pt';
+    el.mRecord.textContent = fmtPt(state.record.pnl) + ' pt · ' + state.record.games + '게임';
+
+    // stay on the full-session review screen; summary card is opt-in
+    renderAll();
+  }
+
+  function hideModal() {
+    el.modalBack.classList.remove('show');
+  }
+
+  /* =========================================================
+     EVENTS
+     ========================================================= */
+  el.btnNext.addEventListener('click', nextMinute);
+  el.btnLongIn.addEventListener('click', () => openPosition('long'));
+  el.btnLongOut.addEventListener('click', () => closePosition('수동 청산'));
+  el.btnShortIn.addEventListener('click', () => openPosition('short'));
+  el.btnShortOut.addEventListener('click', () => closePosition('수동 청산'));
+  el.btnNew.addEventListener('click', () => newGame());
+  el.btnNew2.addEventListener('click', () => newGame());
+  el.btnSummary.addEventListener('click', () => el.modalBack.classList.add('show'));
+  el.mNew.addEventListener('click', () => { hideModal(); newGame(); });
+  el.mClose.addEventListener('click', hideModal);
+  el.btnRetry.addEventListener('click', () => {
+    if (!DAYS.length) { boot(); return; }
+    const v = el.optDay.value;
+    newGame(v === 'random' ? null : v);
+  });
+  el.optDay.addEventListener('change', () => {
+    const v = el.optDay.value;
+    newGame(v === 'random' ? null : v);
+  });
+
+  el.optHideDate.addEventListener('change', () => {
+    state.hideDate = el.optHideDate.checked;
+    renderAll();
+  });
+  el.optCost.addEventListener('change', () => {
+    state.costTicks = el.optCost.checked ? 1 : 0;
+    renderAll();
+  });
+  el.optQty.addEventListener('change', () => {
+    state.contracts = parseInt(el.optQty.value, 10) || 1;
+    renderAll();
+  });
+  el.hRecord.addEventListener('click', () => {
+    if (confirm('누적 성적을 초기화할까요?')) {
+      state.record = { games: 0, pnl: 0, wins: 0, losses: 0 };
+      saveRecord();
+      renderAll();
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+    if (el.modalBack.classList.contains('show')) {
+      if (e.key === 'Escape') { e.preventDefault(); hideModal(); }
+      return;
+    }
+    if (e.code === 'Space' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      nextMinute();
+    } else if (e.key === '1') {
+      e.preventDefault(); openPosition('long');
+    } else if (e.key === '2') {
+      e.preventDefault(); closePosition('수동 청산');
+    } else if (e.key === '3') {
+      e.preventDefault(); openPosition('short');
+    } else if (e.key === '4') {
+      e.preventDefault(); closePosition('수동 청산');
+    }
+  });
+
+  window.addEventListener('resize', () => drawCharts());
+
+  /* =========================================================
+     BOOT
+     ========================================================= */
+  el.optHideDate.checked = true;
+  boot();
+})();
+</script>
+</body>
+</html>

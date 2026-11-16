@@ -1,0 +1,165 @@
+// 트레이닝 페이지(/trainer)용 데이터 로더.
+// Supabase minute_bars → 트레이너 압축 포맷 [min, o, h, l, c, v].
+// 트레이너는 08:45 KST를 0분으로 하는 상대 분(min)을 쓰므로 여기서 변환한다.
+import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { sortDedup, type Bar } from "./bars";
+import { selectFrontMonth } from "./contracts";
+
+export const TRAINER_BASE_MINUTE = 8 * 60 + 45; // 08:45 KST = min 0
+export const TRAINER_MIN_BARS = 90; // 리플레이(PRELOAD 75분)에 필요한 최소 봉 수
+const MAX_MINUTE = 15 * 60 + 30 - TRAINER_BASE_MINUTE; // 15:30 KST = min 405 (정규장 마감)
+
+export type TrainerBar = [number, number, number, number, number, number];
+
+export interface TrainerDay {
+  date: string;
+  count: number;
+}
+
+export interface TrainerDayData {
+  date: string;
+  bars: TrainerBar[];
+  source: "supabase" | "none";
+}
+
+export class TrainerDataError extends Error {
+  status: number;
+  needsLogin: boolean;
+  constructor(message: string, status = 500, needsLogin = false) {
+    super(message);
+    this.name = "TrainerDataError";
+    this.status = status;
+    this.needsLogin = needsLogin;
+  }
+}
+
+/* ---------- pure transforms (unit tested) ---------- */
+
+export function trainerBaseEpoch(date: string): number {
+  const hh = String(Math.floor(TRAINER_BASE_MINUTE / 60)).padStart(2, "0");
+  const mm = String(TRAINER_BASE_MINUTE % 60).padStart(2, "0");
+  return Math.floor(new Date(`${date}T${hh}:${mm}:00+09:00`).getTime() / 1000);
+}
+
+// 가격은 소수점 2자리로 반올림 (틱 0.02 계산 오차 방지)
+export function roundPrice(value: number): number {
+  const r = Math.round(value * 100) / 100;
+  return Object.is(r, -0) ? 0 : r;
+}
+
+export function toTrainerBar(bar: Bar, baseEpoch: number): TrainerBar | null {
+  const min = Math.round((bar.time - baseEpoch) / 60);
+  if (!Number.isFinite(min) || min < 0 || min > MAX_MINUTE) return null;
+  const volume = Number.isFinite(bar.volume) ? Math.max(0, Math.round(bar.volume)) : 0;
+  return [min, roundPrice(bar.open), roundPrice(bar.high), roundPrice(bar.low), roundPrice(bar.close), volume];
+}
+
+export function toTrainerBars(bars: Bar[], date: string): TrainerBar[] {
+  const base = trainerBaseEpoch(date);
+  if (!Number.isFinite(base)) return [];
+  const byMinute = new Map<number, TrainerBar>();
+  for (const bar of sortDedup(bars)) {
+    const compact = toTrainerBar(bar, base);
+    if (!compact) continue;
+    byMinute.set(compact[0], compact); // 같은 분이 중복되면 뒤 값 우선
+  }
+  return [...byMinute.values()].sort((a, b) => a[0] - b[0]);
+}
+
+export const TrainerDayRowSchema = z.object({
+  trading_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  bar_count: z.union([z.number(), z.string()]).transform((v) => Number(v)),
+});
+
+export function normalizeTrainerDays(rows: unknown, minBars = TRAINER_MIN_BARS): TrainerDay[] {
+  const parsed = z.array(TrainerDayRowSchema).safeParse(rows);
+  if (!parsed.success) return [];
+  const seen = new Set<string>();
+  const out: TrainerDay[] = [];
+  for (const row of parsed.data) {
+    if (!Number.isFinite(row.bar_count) || row.bar_count < minBars) continue;
+    if (seen.has(row.trading_date)) continue;
+    seen.add(row.trading_date);
+    out.push({ date: row.trading_date, count: row.bar_count });
+  }
+  return out.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}
+
+export const MinuteBarRowSchema = z.object({
+  bar_time: z.string().min(1),
+  open: z.coerce.number().positive(),
+  high: z.coerce.number().positive(),
+  low: z.coerce.number().positive(),
+  close: z.coerce.number().positive(),
+  volume: z.coerce.number().int().nonnegative(),
+});
+
+export function minuteRowsToBars(rows: unknown): Bar[] {
+  const parsed = z.array(MinuteBarRowSchema).safeParse(rows);
+  if (!parsed.success) return [];
+  return parsed.data.map((row) => ({
+    time: Math.floor(new Date(row.bar_time).getTime() / 1000),
+    open: Number(row.open),
+    high: Number(row.high),
+    low: Number(row.low),
+    close: Number(row.close),
+    volume: Number(row.volume),
+  }));
+}
+
+/* ---------- supabase (server only) ---------- */
+
+async function serverClient(): Promise<SupabaseClient> {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) {
+    throw new TrainerDataError("Supabase 환경변수가 설정되지 않았습니다.", 500);
+  }
+  const { createClient } = await import("./supabase/server");
+  const sb = await createClient();
+  const { data, error } = await sb.auth.getUser();
+  if (error || !data.user) {
+    throw new TrainerDataError("로그인이 필요합니다.", 401, true);
+  }
+  return sb;
+}
+
+// 봉이 있는 거래일 목록 — migration 0002의 trainer_days() 집계 함수 사용.
+export async function loadTrainerDays(minBars = TRAINER_MIN_BARS): Promise<TrainerDay[]> {
+  const sb = await serverClient();
+  const { data, error } = await sb.rpc("trainer_days");
+  if (error) {
+    if (error.code === "PGRST202") {
+      throw new TrainerDataError(
+        "trainer_days() 함수가 없습니다. supabase/migrations/0002_trainer_days.sql 을 적용해 주세요.",
+        500,
+      );
+    }
+    throw new TrainerDataError("훈련 일자 목록을 불러오지 못했습니다.", 500);
+  }
+  return normalizeTrainerDays(data ?? [], minBars);
+}
+
+export async function loadTrainerDay(date: string): Promise<TrainerDayData> {
+  const sb = await serverClient();
+  const { data: contracts, error: contractError } = await sb
+    .from("futures_contracts")
+    .select("id,symbol,expiry_date")
+    .eq("is_active", true);
+  if (contractError) throw new TrainerDataError("월물 정보를 불러오지 못했습니다.", 500);
+
+  const rows = (contracts ?? []) as Array<{ id: number; symbol: string; expiry_date: string }>;
+  const front = selectFrontMonth(rows, date);
+  if (!front) return { date, bars: [], source: "none" };
+
+  const { data: bars, error } = await sb
+    .from("minute_bars")
+    .select("bar_time,open,high,low,close,volume")
+    .eq("contract_id", front.id)
+    .eq("trading_date", date)
+    .order("bar_time", { ascending: true });
+  if (error) throw new TrainerDataError("봉 데이터를 불러오지 못했습니다.", 500);
+
+  const mapped = minuteRowsToBars(bars ?? []);
+  const compact = toTrainerBars(mapped, date);
+  return { date, bars: compact, source: compact.length > 0 ? "supabase" : "none" };
+}
