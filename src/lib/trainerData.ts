@@ -17,6 +17,11 @@ export interface TrainerDay {
   count: number;
 }
 
+export interface TrainerDaysResult {
+  days: TrainerDay[];
+  source: "sql_rpc" | "fallback";
+}
+
 export interface TrainerDayData {
   date: string;
   bars: TrainerBar[];
@@ -140,7 +145,7 @@ async function serverClient(): Promise<SupabaseClient> {
 // minute_bars를 id 순서로 페이징해(유니크 키라 페이지 경계 누락 없음) JS에서 날짜별 집계한다.
 const TRAINER_DAYS_PAGE_SIZE = 1000;
 
-async function loadTrainerDaysFallback(sb: SupabaseClient, minBars: number): Promise<TrainerDay[]> {
+async function loadTrainerDaysFallback(sb: SupabaseClient, minBars: number): Promise<TrainerDaysResult> {
   const { count, error: countError } = await sb
     .from("minute_bars")
     .select("id", { count: "exact", head: true });
@@ -173,16 +178,16 @@ async function loadTrainerDaysFallback(sb: SupabaseClient, minBars: number): Pro
     }
   }
   const rows = [...counts].map(([trading_date, bar_count]) => ({ trading_date, bar_count }));
-  return normalizeTrainerDays(rows, minBars);
+  return { days: normalizeTrainerDays(rows, minBars), source: "fallback" };
 }
 
 // 봉이 있는 거래일 목록 — migration 0002의 trainer_days() 집계 함수 우선 사용,
 // 함수가 아직 없으면(PGRST202) minute_bars 직접 집계로 폴백한다.
-export async function loadTrainerDays(minBars = TRAINER_MIN_BARS): Promise<TrainerDay[]> {
+export async function loadTrainerDays(minBars = TRAINER_MIN_BARS): Promise<TrainerDaysResult> {
   const sb = await serverClient();
   const { data, error } = await sb.rpc("trainer_days");
   if (!error) {
-    return normalizeTrainerDays(data ?? [], minBars);
+    return { days: normalizeTrainerDays(data ?? [], minBars), source: "sql_rpc" };
   }
   if (error.code === "PGRST202") {
     return loadTrainerDaysFallback(sb, minBars);
