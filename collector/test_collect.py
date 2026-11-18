@@ -13,8 +13,11 @@ from collect import (
     select_front_month,
     parse_master_text,
     fetch_day_bars,
+    normalize_hhmmss,
 )
 from krx_holidays import is_krx_holiday
+
+import pytest
 
 
 class FakeResponse:
@@ -104,6 +107,39 @@ def test_fetch_day_bars_starts_at_1545_close():
     session = FakeSession([[]])
     fetch_day_bars(session, {}, "A01612", "2026-11-18")
     assert session.calls[0]["FID_INPUT_HOUR_1"] == "154500"
+
+
+def test_fetch_day_bars_starts_at_csat_close():
+    session = FakeSession([[]])
+    fetch_day_bars(session, {}, "A01612", "2026-11-19", close_hhmmss="164500")
+    assert session.calls[0]["FID_INPUT_HOUR_1"] == "164500"
+
+
+def test_default_session_hours():
+    from collect import DEFAULT_CLOSE_HHMMSS, DEFAULT_OPEN_HHMMSS
+    assert (DEFAULT_OPEN_HHMMSS, DEFAULT_CLOSE_HHMMSS) == ("084500", "154500")
+
+
+@pytest.mark.parametrize(("raw", "want"), [
+    ("9:45", "094500"),
+    ("09:45", "094500"),
+    ("0945", "094500"),
+    ("094500", "094500"),
+])
+def test_normalize_hhmmss(raw, want):
+    assert normalize_hhmmss(raw) == want
+
+
+@pytest.mark.parametrize("raw", ["", "abc", "09:70", "2500", "1234567"])
+def test_normalize_hhmmss_invalid(raw):
+    with pytest.raises(ValueError):
+        normalize_hhmmss(raw)
+
+
+def test_special_session_requires_close(capsys):
+    from collect import main
+    assert main(["--date", "2026-11-19", "--special-session"]) == 1
+    assert "--session-close" in capsys.readouterr().err
 
 
 def test_fetch_day_bars_includes_1545_bar():

@@ -33,8 +33,10 @@ MASTER_URL = "https://new.real.download.dws.co.kr/common/master/fo_idx_code_mts.
 
 LOG = logging.getLogger("collect")
 
-# KOSPI200 선물 정규장 마감 15:45 KST. 이 시각에서 과거로 거슬러 올라가며 수집한다.
-SESSION_CLOSE_HHMMSS = "154500"
+# KOSPI200 선물 정규장 기본 시간(KST). 특별 세션(연초 첫 거래일·수능일 등)은
+# 수동 실행에서 --special-session + --session-close로 직접 지정한다.
+DEFAULT_OPEN_HHMMSS = "084500"
+DEFAULT_CLOSE_HHMMSS = "154500"
 
 SECRET_PATTERNS: list[str] = []
 
@@ -51,6 +53,25 @@ def get_env(name: str, required: bool = True) -> str:
     if required and not v:
         raise SystemExit(f"missing env {name}")
     return v
+
+
+def normalize_hhmmss(value: str) -> str:
+    """'9:45' / '0945' / '094500' → 'HHMMSS'. 잘못된 값은 ValueError."""
+    s = str(value).strip().replace(":", "")
+    if len(s) in (3, 4):
+        s = s.zfill(4) + "00"
+    if not (len(s) == 6 and s.isdigit()):
+        raise ValueError(f"invalid time (HH:MM or HHMMSS): {value!r}")
+    h, m, sec = int(s[:2]), int(s[2:4]), int(s[4:])
+    if h > 23 or m > 59 or sec > 59:
+        raise ValueError(f"invalid time (HH:MM or HHMMSS): {value!r}")
+    return s
+
+
+def hhmmss_label(value: str) -> str:
+    """'094500' → '09:45'."""
+    s = normalize_hhmmss(value)
+    return f"{s[:2]}:{s[2:4]}"
 
 
 # ---------------- KIS auth ----------------
@@ -208,9 +229,11 @@ def select_front_month(contracts: list[dict], trading_date: str) -> dict | None:
 
 
 # ---------------- fetch one day ----------------
-def fetch_day_bars(session: requests.Session, headers: dict, code: str, ymd: str) -> list[dict]:
+def fetch_day_bars(session: requests.Session, headers: dict, code: str, ymd: str,
+                   close_hhmmss: str = DEFAULT_CLOSE_HHMMSS) -> list[dict]:
     date_compact = ymd.replace("-", "")
-    cursor = datetime.strptime(date_compact + SESSION_CLOSE_HHMMSS, "%Y%m%d%H%M%S")
+    close_hhmmss = normalize_hhmmss(close_hhmmss)
+    cursor = datetime.strptime(date_compact + close_hhmmss, "%Y%m%d%H%M%S")
     seen: set[str] = set()
     bars: list[dict] = []
     for _ in range(100):
@@ -254,9 +277,27 @@ def supa_upsert(base: str, svc: str, table: str, rows: list[dict], on_conflict: 
     return {"status": r.status_code}
 
 
-def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
+def run(trading_date: str, dry_run: bool = False, force: bool = False,
+        session_open: str | None = None, session_close: str | None = None,
+        special_session: bool = False) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     t0 = time.time()
+    if special_session and not session_close:
+        raise SystemExit("--special-session requires --session-close (e.g. 16:45)")
+    open_hhmmss = normalize_hhmmss(session_open) if session_open else DEFAULT_OPEN_HHMMSS
+    close_hhmmss = normalize_hhmmss(session_close) if session_close else DEFAULT_CLOSE_HHMMSS
+    manual = special_session or bool(session_open or session_close)
+    LOG.info("session %s %s-%s%s", trading_date, hhmmss_label(open_hhmmss),
+             hhmmss_label(close_hhmmss), " (manual)" if manual else "")
+    now = datetime.now(KST)
+    if trading_date == now.strftime("%Y-%m-%d"):
+        close_at = datetime.strptime(trading_date + close_hhmmss, "%Y-%m-%d%H%M%S").replace(tzinfo=KST)
+        if now < close_at:
+            LOG.warning("session closes at %s KST; bars may be incomplete", hhmmss_label(close_hhmmss))
+    if special_session:
+        # 특별 세션은 사용자가 지정한 거래일이므로 주말/휴장일 판정을 건너뛴다.
+        LOG.info("special session: skip weekend/holiday checks")
+        force = True
     app_key = get_env("KIS_APP_KEY")
     app_secret = get_env("KIS_APP_SECRET")
     sb_url = get_env("SUPABASE_URL")
@@ -297,7 +338,7 @@ def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
     if not any(m.get("symbol") == front["symbol"] for m in master):
         LOG.warning(mask(f"front {front['symbol']} not in master file"))
 
-    bars = fetch_day_bars(session, headers, front["symbol"], trading_date)
+    bars = fetch_day_bars(session, headers, front["symbol"], trading_date, close_hhmmss)
     LOG.info("fetched %d bars for %s %s", len(bars), trading_date, mask(front["symbol"]))
 
     # 검증: 응답 심볼 일치(요청 코드 사용), 시간 오름차순, 기존보다 축소 여부
@@ -379,10 +420,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="주말/KRX 휴장일 스킵을 무시하고 수집 시도")
+    ap.add_argument("--session-open", default=os.environ.get("COLLECT_SESSION_OPEN") or None,
+                    help="개장 시각 수동 지정 (HH:MM 또는 HHMMSS). 기본 08:45")
+    ap.add_argument("--session-close", default=os.environ.get("COLLECT_SESSION_CLOSE") or None,
+                    help="수집 기준 마감 시각 (HH:MM 또는 HHMMSS). 기본 15:45")
+    ap.add_argument("--special-session", action="store_true",
+                    help="특별 세션 수동 지정. --session-close 필수, 주말/휴장일 체크 생략")
     a = ap.parse_args(argv)
     try:
-        return run(a.date, a.dry_run, a.force)
-    except SystemExit as e:
+        return run(a.date, a.dry_run, a.force, a.session_open, a.session_close, a.special_session)
+    except (SystemExit, ValueError) as e:
         print(mask(str(e)), file=sys.stderr)
         return 1
 

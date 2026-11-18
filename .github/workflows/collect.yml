@@ -15,6 +15,19 @@ on:
         description: "true면 주말/휴장일 스킵 무시"
         required: false
         default: "false"
+      special_session:
+        description: "특별 세션 수동 지정 (true면 session_close까지 수집, 주말/휴장일 체크 생략)"
+        type: boolean
+        required: false
+        default: false
+      session_open:
+        description: "개장 시각 HH:MM (special_session=true일 때만 사용, 기본 08:45 / 예: 09:45)"
+        required: false
+        default: ""
+      session_close:
+        description: "수집 기준 마감 시각 HH:MM (special_session=true일 때 필수, 예: 16:45)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -79,6 +92,9 @@ jobs:
           INPUT_DATE: ${{ inputs.date }}
           INPUT_DRY_RUN: ${{ inputs.dry_run || 'false' }}
           INPUT_FORCE: ${{ inputs.force || 'false' }}
+          INPUT_SPECIAL_SESSION: ${{ inputs.special_session }}
+          INPUT_SESSION_OPEN: ${{ inputs.session_open }}
+          INPUT_SESSION_CLOSE: ${{ inputs.session_close }}
         run: |
           set -euo pipefail
 
@@ -94,6 +110,19 @@ jobs:
 
           if [ "${INPUT_FORCE}" = "true" ]; then
             args+=(--force)
+          fi
+
+          if [ "${INPUT_SPECIAL_SESSION}" = "true" ]; then
+            if [ -z "${INPUT_SESSION_CLOSE}" ]; then
+              echo "::error::special_session=true 이면 session_close(예: 16:45)를 입력해야 합니다."
+              exit 1
+            fi
+            args+=(--special-session --session-close "${INPUT_SESSION_CLOSE}")
+            if [ -n "${INPUT_SESSION_OPEN}" ]; then
+              args+=(--session-open "${INPUT_SESSION_OPEN}")
+            fi
+          elif [ -n "${INPUT_SESSION_OPEN}${INPUT_SESSION_CLOSE}" ]; then
+            echo "::warning::special_session=false라서 session_open/session_close 입력을 무시합니다."
           fi
 
           echo "Starting collector..."
