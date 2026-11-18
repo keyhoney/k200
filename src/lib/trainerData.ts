@@ -8,7 +8,7 @@ import { selectFrontMonth } from "./contracts";
 
 export const TRAINER_BASE_MINUTE = 8 * 60 + 45; // 08:45 KST = min 0
 export const TRAINER_MIN_BARS = 90; // 리플레이(PRELOAD 75분)에 필요한 최소 봉 수
-const MAX_MINUTE = 15 * 60 + 30 - TRAINER_BASE_MINUTE; // 15:30 KST = min 405 (정규장 마감)
+const MAX_MINUTE = 15 * 60 + 45 - TRAINER_BASE_MINUTE; // 15:45 KST = min 420 (정규장 마감)
 
 export type TrainerBar = [number, number, number, number, number, number];
 

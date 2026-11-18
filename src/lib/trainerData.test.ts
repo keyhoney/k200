@@ -60,14 +60,15 @@ describe("toTrainerBars", () => {
     expect(out[1][5]).toBe(9);
   });
 
-  it("08:45 이전·15:30 이후 봉과 잘못된 OHLC 봉은 버린다", () => {
+  it("08:45 이전·15:45 이후 봉과 잘못된 OHLC 봉은 버린다", () => {
     const bars = [
       makeBar(base - 60, 1, 1, 1, 1),
       makeBar(base + 5 * 60, 10, 9, 11, 10), // high < low → 무효
       makeBar(base + 6 * 60, 3, 4, 2, 3),
-      makeBar(base + 406 * 60, 3, 3, 3, 3), // 15:31
+      makeBar(base + 420 * 60, 3, 3, 3, 3), // 15:45 마감 봉
+      makeBar(base + 421 * 60, 3, 3, 3, 3), // 15:46
     ];
-    expect(toTrainerBars(bars, date).map((b) => b[0])).toEqual([6]);
+    expect(toTrainerBars(bars, date).map((b) => b[0])).toEqual([6, 420]);
   });
 
   it("날짜가 잘못되면 빈 배열", () => {

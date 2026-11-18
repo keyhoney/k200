@@ -23,10 +23,27 @@ python collector/collect.py --date 2026-10-12             # upsert
 
 주말은 자동 SKIPPED. 실패 시 `collection_runs`에 FAILED 기록 후 Actions 실패 종료.
 
+## 15:31~15:45 구간 채우기 (기존 수집일 백필)
+
+15:30까지만 받아둔 날짜는 `--tail`로 마감 구간만 다시 받아 덧붙인다.
+`--dates-file`은 한 줄에 `YYYY-MM-DD` 하나 형식이며, 빈 줄과 `#` 주석을 허용한다.
+(예: `collector/data.md`)
+
+```powershell
+python collector/collect.py --dates-file collector/data.md --tail --dry-run  # 대상/건수 확인
+python collector/collect.py --dates-file collector/data.md --tail            # 실제 upsert
+```
+
+- 기존 봉이 있는 날짜만 처리하고, 그 날짜 마지막 봉과 같은 `contract_id`에 15:31~15:45를 넣는다.
+- 기존 봉이 없는 날짜는 건너뛰고 `collection_runs`에 WARNING을 남긴 뒤 다음 날짜로 넘어간다.
+- upsert라서 같은 날짜를 다시 실행해도 중복되지 않는다. 15:45 봉이 이미 있으면 그대로 덮어쓴다.
+- KIS 호출 제한을 피하려고 날짜 사이에 0.5초씩 쉰다.
+
 ## GitHub Secrets
 
 `KIS_APP_KEY`, `KIS_APP_SECRET`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-→ Actions `collect-k200` (KST 15:50 본수집 + 16:00 메우기, 수동 dispatch 지원).
+→ Actions `collect-k200` (수동 dispatch 지원). `dates_file=collector/data.md`, `tail=true`로
+실행하면 GitHub Actions에서도 마감 구간을 한 번에 백필한다. (파일을 먼저 커밋해야 한다.)
 
 주말·KRX 휴장일(공휴일 + 12/31 연말휴장)은 자동 SKIPPED. `--force`로 무시 가능.
 

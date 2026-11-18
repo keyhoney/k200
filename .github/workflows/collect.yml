@@ -15,6 +15,14 @@ on:
         description: "true면 주말/휴장일 스킵 무시"
         required: false
         default: "false"
+      dates_file:
+        description: "거래일 목록 파일 경로 (예: collector/data.md)"
+        required: false
+        default: ""
+      tail:
+        description: "true면 15:31-15:45 구간만 수집"
+        required: false
+        default: "false"
 
 permissions:
   contents: read
@@ -79,6 +87,8 @@ jobs:
           INPUT_DATE: ${{ inputs.date }}
           INPUT_DRY_RUN: ${{ inputs.dry_run || 'false' }}
           INPUT_FORCE: ${{ inputs.force || 'false' }}
+          INPUT_DATES_FILE: ${{ inputs.dates_file }}
+          INPUT_TAIL: ${{ inputs.tail || 'false' }}
         run: |
           set -euo pipefail
 
@@ -86,6 +96,14 @@ jobs:
 
           if [ -n "${INPUT_DATE}" ]; then
             args+=(--date "${INPUT_DATE}")
+          fi
+
+          if [ -n "${INPUT_DATES_FILE}" ]; then
+            args+=(--dates-file "${INPUT_DATES_FILE}")
+          fi
+
+          if [ "${INPUT_TAIL}" = "true" ]; then
+            args+=(--tail)
           fi
 
           if [ "${INPUT_DRY_RUN}" = "true" ]; then

@@ -1,11 +1,55 @@
 """Fixture 기반 테스트 — 실제 API 호출 없음."""
 import sys
 import os
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from collect import normalize_rows, sort_dedup, valid_bar, select_front_month, parse_master_text
+from collect import (
+    KST,
+    TAIL_START_HHMMSS,
+    normalize_rows,
+    sort_dedup,
+    valid_bar,
+    select_front_month,
+    parse_master_text,
+    parse_dates_file,
+    fetch_day_bars,
+)
 from krx_holidays import is_krx_holiday
+
+import pytest
+
+
+class FakeResponse:
+    def __init__(self, rows):
+        self.status_code = 200
+        self._rows = rows
+
+    def json(self):
+        return {"rt_cd": "0", "output2": self._rows}
+
+
+class FakeSession:
+    """KIS 응답을 페이지 단위로 돌려주고 요청 파라미터를 기록한다."""
+
+    def __init__(self, pages):
+        self.pages = list(pages)
+        self.calls = []
+
+    def get(self, url, headers=None, params=None, timeout=None):
+        self.calls.append(dict(params or {}))
+        rows = self.pages.pop(0) if self.pages else []
+        return FakeResponse(rows)
+
+
+def minute_row(hhmmss: str, price: float = 350.0, volume: int = 1) -> dict:
+    return {
+        "stck_bsop_date": "20261118", "stck_cntg_hour": hhmmss,
+        "futs_oprc": str(price), "futs_hgpr": str(price + 0.05),
+        "futs_lwpr": str(price - 0.05), "futs_prpr": str(price),
+        "cntg_vol": str(volume),
+    }
 
 
 def test_normalize_and_dedup():
@@ -58,6 +102,56 @@ def test_master_parse_real_format():
     syms = [c["symbol"] for c in out]
     assert "A01612" in syms and "A01703" in syms
     assert "A04610" not in syms  # VKOSPI 제외
+
+
+def test_fetch_day_bars_starts_at_1545_close():
+    session = FakeSession([[]])
+    fetch_day_bars(session, {}, "A01612", "2026-11-18")
+    assert session.calls[0]["FID_INPUT_HOUR_1"] == "154500"
+
+
+def test_fetch_day_bars_includes_1545_bar():
+    session = FakeSession([[minute_row("154400"), minute_row("154500", 351.0, 7)]])
+    bars = fetch_day_bars(session, {}, "A01612", "2026-11-18")
+    assert len(bars) == 2
+    last = datetime.fromtimestamp(bars[-1]["time"], tz=KST)
+    assert last.strftime("%H:%M") == "15:45"
+    assert bars[-1]["volume"] == 7
+
+
+def test_fetch_day_bars_tail_window_only():
+    session = FakeSession([[
+        minute_row("154500"),
+        minute_row("154400"),
+        minute_row("153100"),
+        minute_row("153000"),
+        minute_row("152900"),
+    ]])
+    bars = fetch_day_bars(session, {}, "A01612", "2026-11-18",
+                          stop_hhmmss=TAIL_START_HHMMSS)
+    times = [datetime.fromtimestamp(b["time"], tz=KST).strftime("%H:%M") for b in bars]
+    assert times == ["15:31", "15:44", "15:45"]
+    # 15:31보다 과거까지 한 페이지에 왔으므로 추가 페이지 호출 없이 끝난다.
+    assert len(session.calls) == 1
+
+
+def test_parse_dates_file_ignores_blank_and_comments(tmp_path):
+    path = tmp_path / "dates.md"
+    path.write_text(
+        "2026-11-17\n"
+        "# 주석\n"
+        "\n"
+        "2026-11-16, 2026-11-17\n",
+        encoding="utf-8",
+    )
+    assert parse_dates_file(str(path)) == ["2026-11-17", "2026-11-16"]
+
+
+def test_parse_dates_file_rejects_invalid_date(tmp_path):
+    path = tmp_path / "dates.md"
+    path.write_text("2026-11-17\n2026/11/16\n", encoding="utf-8")
+    with pytest.raises(ValueError):
+        parse_dates_file(str(path))
 
 
 def test_krx_holiday():

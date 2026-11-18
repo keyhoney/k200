@@ -33,6 +33,11 @@ MASTER_URL = "https://new.real.download.dws.co.kr/common/master/fo_idx_code_mts.
 
 LOG = logging.getLogger("collect")
 
+# KOSPI200 선물 정규장 마감 15:45 KST. 이 시각에서 과거로 거슬러 올라가며 수집한다.
+SESSION_CLOSE_HHMMSS = "154500"
+# --tail 백필 구간 시작(15:31). 기존에 15:30까지만 받아둔 날짜를 메울 때 사용한다.
+TAIL_START_HHMMSS = "153100"
+
 SECRET_PATTERNS: list[str] = []
 
 
@@ -205,34 +210,42 @@ def select_front_month(contracts: list[dict], trading_date: str) -> dict | None:
 
 
 # ---------------- fetch one day ----------------
-def fetch_day_bars(session: requests.Session, headers: dict, code: str, ymd: str) -> list[dict]:
+def fetch_day_bars(session: requests.Session, headers: dict, code: str, ymd: str, *,
+                   start_hhmmss: str = SESSION_CLOSE_HHMMSS,
+                   stop_hhmmss: str | None = None) -> list[dict]:
+    """해당 일자 1분봉을 start_hhmmss에서 과거로 수집한다.
+
+    stop_hhmmss를 주면 그 시각(포함)보다 과거 봉은 버리고, 페이지도 거기서 멈춘다.
+    (--tail 백필에서 15:31~15:45만 받기 위한 용도)
+    """
     date_compact = ymd.replace("-", "")
-    cursor = datetime.strptime(date_compact + "153000", "%Y%m%d%H%M%S")
-    seen: set[str] = set()
+    cursor = datetime.strptime(date_compact + start_hhmmss, "%Y%m%d%H%M%S")
+    stop_compact = date_compact + stop_hhmmss if stop_hhmmss else None
     bars: list[dict] = []
     for _ in range(100):
         rows = kis_time_page(session, headers, code, cursor)
         if not rows:
             break
-        oldest: str | None = None
+        page_keys: list[str] = []
         for r in rows:
             d = str(r.get("stck_bsop_date", ""))
             h = str(r.get("stck_cntg_hour", ""))
-            k = d + h
-            if k in seen or not (d.isdigit() and h.isdigit()):
+            if not (d.isdigit() and len(d) == 8 and h.isdigit() and len(h) == 6):
                 continue
-            seen.add(k)
-            oldest = k
+            page_keys.append(d + h)
         bars.extend(normalize_rows(rows))
-        if oldest is None:
+        if not page_keys:
+            break
+        oldest = min(page_keys)
+        if stop_compact and oldest <= stop_compact:
             break
         cursor = datetime.strptime(oldest, "%Y%m%d%H%M%S") - timedelta(seconds=1)
-        if cursor.strftime("%Y%m%d") != date_compact and len(bars) > 0:
-            # 하루치 경계를 넘어 과거로 가면 중단해도 되나, 야간세션 혼입 방지를 위해 날짜 필터는 저장 시 적용
-            pass
     # 해당 거래일(일자 prefix) 봉만 유지: KST 날짜 기준
     day_bars = [b for b in bars
                 if datetime.fromtimestamp(b["time"], tz=KST).strftime("%Y-%m-%d") == ymd]
+    if stop_hhmmss:
+        day_bars = [b for b in day_bars
+                    if datetime.fromtimestamp(b["time"], tz=KST).strftime("%H%M%S") >= stop_hhmmss]
     return sort_dedup(day_bars)
 
 
@@ -251,7 +264,14 @@ def supa_upsert(base: str, svc: str, table: str, rows: list[dict], on_conflict: 
     return {"status": r.status_code}
 
 
-def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
+def run(trading_date: str, dry_run: bool = False, force: bool = False,
+        *, only_tail: bool = False) -> int:
+    return run_dates([trading_date], dry_run=dry_run, force=force, only_tail=only_tail)
+
+
+def run_dates(trading_dates: list[str], dry_run: bool = False, force: bool = False,
+              *, only_tail: bool = False) -> int:
+    """여러 거래일을 한 번에 수집한다. 토큰/월물 목록은 배치당 1회만 준비한다."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     t0 = time.time()
     app_key = get_env("KIS_APP_KEY")
@@ -261,6 +281,33 @@ def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
     for s in (app_key, app_secret, sb_svc):
         SECRET_PATTERNS.append(s)
 
+    token = kis_token(app_key, app_secret)
+    session = requests.Session()
+    headers = kis_headers(app_key, app_secret, token, TR_TIME)
+
+    try:
+        master = download_master(os.path.join(os.path.dirname(__file__), ".cache"))
+    except Exception as e:  # master는 심볼 경고용 — 실패해도 DB 정본으로 계속 진행
+        LOG.warning("master download failed: %s", mask(str(e)))
+        master = []
+    # 만기일 정보는 Supabase futures_contracts를 정본으로 사용, master는 심볼 목록용.
+    # --tail은 기존 봉의 contract_id를 우선하므로 비활성 월물도 후보에 포함한다.
+    contracts = load_contracts(sb_url, sb_svc, active_only=not only_tail)
+    rc = 0
+    total = len(trading_dates)
+    for i, trading_date in enumerate(trading_dates, 1):
+        LOG.info("[%d/%d] %s%s", i, total, trading_date, " (tail)" if only_tail else "")
+        rc |= collect_one(session, headers, sb_url, sb_svc, trading_date, contracts, master,
+                          dry_run=dry_run, force=force, only_tail=only_tail)
+        if i < total:
+            time.sleep(0.5)  # KIS 호출 제한 여유
+    LOG.info("batch done in %.1fs dates=%d", time.time() - t0, total)
+    return rc
+
+
+def collect_one(session: requests.Session, headers: dict, sb_url: str, sb_svc: str,
+                trading_date: str, contracts: list[dict], master: list[dict], *,
+                dry_run: bool = False, force: bool = False, only_tail: bool = False) -> int:
     # 평일 체크 (KST)
     wd = datetime.strptime(trading_date, "%Y-%m-%d").weekday()
     if not force and wd >= 5:
@@ -276,35 +323,53 @@ def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
             record_run(sb_url, sb_svc, trading_date, None, "SKIPPED", 0, 0, "krx holiday")
         return 0
 
-    token = kis_token(app_key, app_secret)
-    session = requests.Session()
-    headers = kis_headers(app_key, app_secret, token, TR_TIME)
+    if only_tail:
+        # 이미 수집된 날짜의 마지막 봉과 같은 월물에 15:31~15:45를 덧붙인다.
+        contract_id = existing_contract_id(sb_url, sb_svc, trading_date)
+        if contract_id is None:
+            msg = "no existing bars for date; skip tail backfill"
+            LOG.warning("%s %s", trading_date, msg)
+            if not dry_run:
+                record_run(sb_url, sb_svc, trading_date, None, "WARNING", 0, 0, msg)
+            return 1
+        front = next((c for c in contracts if c.get("id") == contract_id), None)
+        if not front:
+            msg = f"contract id {contract_id} not found in futures_contracts"
+            LOG.error("%s %s", trading_date, mask(msg))
+            if not dry_run:
+                record_run(sb_url, sb_svc, trading_date, None, "WARNING", 0, 0, msg)
+            return 1
+    else:
+        front = select_front_month(contracts, trading_date)
+        if not front:
+            msg = "no front month contracts in DB"
+            LOG.error(mask(msg))
+            if not dry_run:
+                record_run(sb_url, sb_svc, trading_date, None, "FAILED", 0, 0, msg)
+            return 1
 
-    master = download_master(os.path.join(os.path.dirname(__file__), ".cache"))
-    # 만기일 정보는 Supabase futures_contracts를 정본으로 사용, master는 심볼 목록용
-    contracts = load_contracts(sb_url, sb_svc)
-    front = select_front_month(contracts, trading_date)
-    if not front:
-        msg = "no front month contracts in DB"
-        LOG.error(mask(msg))
-        if not dry_run:
-            record_run(sb_url, sb_svc, trading_date, None, "FAILED", 0, 0, msg)
-        return 1
     # master에 해당 심볼이 없으면 경고만 (DB 정본 우선)
     if not any(m.get("symbol") == front["symbol"] for m in master):
         LOG.warning(mask(f"front {front['symbol']} not in master file"))
 
-    bars = fetch_day_bars(session, headers, front["symbol"], trading_date)
+    bars = fetch_day_bars(session, headers, front["symbol"], trading_date,
+                          stop_hhmmss=TAIL_START_HHMMSS if only_tail else None)
     LOG.info("fetched %d bars for %s %s", len(bars), trading_date, mask(front["symbol"]))
 
-    # 검증: 응답 심볼 일치(요청 코드 사용), 시간 오름차순, 기존보다 축소 여부
+    # 검증: 시간 오름차순, 기존보다 축소 여부 (tail은 부분 수집이라 축소 검사 제외)
     times = [b["time"] for b in bars]
     assert times == sorted(times), "bars not ascending"
-    existing = count_existing(sb_url, sb_svc, front["id"], trading_date)
     status = "SUCCESS"
-    if bars and existing and len(bars) < existing:
+    err: str | None = None
+    if only_tail and not bars:
         status = "WARNING"
-        LOG.warning("new bars %d < existing %d, skip overwrite", len(bars), existing)
+        err = f"no bars in tail window {TAIL_START_HHMMSS}-{SESSION_CLOSE_HHMMSS}"
+        LOG.warning("%s %s", trading_date, err)
+    elif not only_tail:
+        existing = count_existing(sb_url, sb_svc, front["id"], trading_date)
+        if bars and existing and len(bars) < existing:
+            status = "WARNING"
+            LOG.warning("new bars %d < existing %d, skip overwrite", len(bars), existing)
 
     if dry_run:
         LOG.info("dry-run: skip upsert")
@@ -323,17 +388,36 @@ def run(trading_date: str, dry_run: bool = False, force: bool = False) -> int:
         inserted = len(rows)
 
     record_run(sb_url, sb_svc, trading_date, front["symbol"], status, len(bars), inserted,
-               None if bars else "empty response",
+               err or (None if bars else "empty response"),
                bars[0]["time"] if bars else None, bars[-1]["time"] if bars else None)
-    LOG.info("done in %.1fs status=%s", time.time() - t0, status)
+    LOG.info("%s done status=%s inserted=%d", trading_date, status, inserted)
     return 0 if status in ("SUCCESS", "SKIPPED") else 1
 
 
-def load_contracts(sb_url: str, svc: str) -> list[dict]:
-    r = requests.get(f"{sb_url}/rest/v1/futures_contracts?select=id,symbol,contract_name,expiry_date&is_active=eq.true",
-                     headers={"apikey": svc, "Authorization": f"Bearer {svc}"}, timeout=20)
+def load_contracts(sb_url: str, svc: str, *, active_only: bool = True) -> list[dict]:
+    url = f"{sb_url}/rest/v1/futures_contracts?select=id,symbol,contract_name,expiry_date"
+    if active_only:
+        url += "&is_active=eq.true"
+    r = requests.get(url, headers={"apikey": svc, "Authorization": f"Bearer {svc}"}, timeout=20)
     r.raise_for_status()
     return r.json()
+
+
+def existing_contract_id(sb_url: str, svc: str, trading_date: str) -> int | None:
+    """해당 일자 마지막 봉의 contract_id (tail 백필을 같은 월물에 붙이기 위함)."""
+    r = requests.get(
+        f"{sb_url}/rest/v1/minute_bars?select=contract_id&trading_date=eq.{trading_date}"
+        "&order=bar_time.desc&limit=1",
+        headers={"apikey": svc, "Authorization": f"Bearer {svc}"}, timeout=20)
+    if r.status_code != 200:
+        return None
+    rows = r.json()
+    if not rows:
+        return None
+    try:
+        return int(rows[0]["contract_id"])
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def count_existing(sb_url: str, svc: str, contract_id: int, trading_date: str) -> int:
@@ -370,15 +454,69 @@ def record_run(sb_url: str, svc: str, trading_date: str, symbol: str | None, sta
         raise SystemExit(f"collection failed: {mask(err or '')}")
 
 
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def validate_date(value: str) -> str:
+    if not DATE_RE.match(value):
+        raise ValueError(f"invalid date {value!r} (YYYY-MM-DD)")
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError as e:
+        raise ValueError(f"invalid date {value!r} (YYYY-MM-DD)") from e
+    return value
+
+
+def parse_dates_file(path: str) -> list[str]:
+    """한 줄에 하나(또는 공백/쉼표 구분) YYYY-MM-DD. 빈 줄과 # 주석 허용."""
+    dates: list[str] = []
+    seen: set[str] = set()
+    with open(path, encoding="utf-8") as f:
+        for lineno, raw in enumerate(f, 1):
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            for token in re.split(r"[\s,]+", line):
+                if not token:
+                    continue
+                try:
+                    validate_date(token)
+                except ValueError as e:
+                    raise ValueError(f"{path}:{lineno}: {e}") from e
+                if token not in seen:
+                    seen.add(token)
+                    dates.append(token)
+    return dates
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--date", default=datetime.now(KST).strftime("%Y-%m-%d"))
+    ap.add_argument("--date", help="거래일 YYYY-MM-DD (생략 시 오늘)")
+    ap.add_argument("--dates-file",
+                    help="거래일 목록 파일 (한 줄에 YYYY-MM-DD 하나, # 주석 허용)")
+    ap.add_argument("--tail", action="store_true",
+                    help=f"15:31~15:45({TAIL_START_HHMMSS}-{SESSION_CLOSE_HHMMSS}) 구간만 "
+                         "수집해 기존 데이터에 추가")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true",
                     help="주말/KRX 휴장일 스킵을 무시하고 수집 시도")
     a = ap.parse_args(argv)
+
+    dates: list[str] = []
     try:
-        return run(a.date, a.dry_run, a.force)
+        if a.date:
+            dates.append(validate_date(a.date))
+        if a.dates_file:
+            dates.extend(parse_dates_file(a.dates_file))
+    except (OSError, ValueError) as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    if not dates:
+        dates = [datetime.now(KST).strftime("%Y-%m-%d")]
+    dates = list(dict.fromkeys(dates))  # 입력 순서 유지하며 중복 제거
+
+    try:
+        return run_dates(dates, a.dry_run, a.force, only_tail=a.tail)
     except SystemExit as e:
         print(mask(str(e)), file=sys.stderr)
         return 1
