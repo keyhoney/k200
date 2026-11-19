@@ -5,9 +5,9 @@
   "params": {
     "wmaPeriod": 20,
     "atrPeriod": 14,
-    "rMin": 2.5,
+    "rMin": 2,
     "rMax": 4.0,
-    "contactTolerance": 0.2,
+    "contactTolerance": 0.4,
     "longSlope": 0.05,
     "shortSlope": -0.05,
     "entryStart": 45,
