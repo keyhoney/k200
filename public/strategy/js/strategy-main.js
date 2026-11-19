@@ -30,7 +30,6 @@ async function getJson(url) {
     throw new Error(`서버 응답을 읽을 수 없습니다 (${response.status}).`);
   }
   if (!response.ok) {
-    if (response.status === 401 || data?.needsLogin) throw new Error("로그인이 필요합니다. /login 에서 로그인한 뒤 새로고침하세요.");
     throw new Error(data?.error || `데이터 요청 실패 (${response.status}).`);
   }
   return data;
@@ -202,7 +201,7 @@ export async function runStrategyApp({ loadConfig, WmaStrategyEngine, StrategyCh
 
   async function loadDay(date) {
     if (cache.has(date)) return cache.get(date);
-    const payload = await getJson(`/api/trainer/day?date=${encodeURIComponent(date)}`);
+    const payload = await getJson(`/api/strategy/day?date=${encodeURIComponent(date)}`);
     if (payload.date !== date) throw new Error("요청한 거래일과 응답 거래일이 일치하지 않습니다.");
     const result = new WmaStrategyEngine(mapBars(payload), config).run();
     cache.set(date, result);
@@ -251,7 +250,7 @@ export async function runStrategyApp({ loadConfig, WmaStrategyEngine, StrategyCh
     config = { ...baseConfig, ...loadOverrides() };
     renderConfigFields(config);
     charts = new StrategyCharts();
-    const response = await getJson("/api/trainer/days");
+    const response = await getJson("/api/strategy/days");
     days = response.days;
     if (!Array.isArray(days) || days.length === 0) throw new Error("백테스트할 거래일이 없습니다.");
     for (const day of days) {

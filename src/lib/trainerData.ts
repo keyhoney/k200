@@ -141,6 +141,18 @@ async function serverClient(): Promise<SupabaseClient> {
   return sb;
 }
 
+async function publicMarketDataClient(): Promise<SupabaseClient> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw new TrainerDataError("Supabase 환경변수가 설정되지 않았습니다.", 500);
+  }
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
 // 0002 미적용 환경용 폴백: 이 Supabase 인스턴스는 REST 집계 함수가 차단되어 있어
 // minute_bars를 id 순서로 페이징해(유니크 키라 페이지 경계 누락 없음) JS에서 날짜별 집계한다.
 const TRAINER_DAYS_PAGE_SIZE = 1000;
@@ -195,6 +207,21 @@ export async function loadTrainerDays(minBars = TRAINER_MIN_BARS): Promise<Train
   throw new TrainerDataError("훈련 일자 목록을 불러오지 못했습니다.", 500);
 }
 
+export async function loadPublicStrategyDays(): Promise<TrainerDaysResult> {
+  const sb = await publicMarketDataClient();
+  const { data, error } = await sb.rpc("strategy_public_days");
+  if (error) {
+    const migrationMissing = error.code === "PGRST202" || error.code === "42883" || error.code === "42501";
+    throw new TrainerDataError(
+      migrationMissing
+        ? "공개 전략 데이터베이스 설정을 확인해 주세요. supabase/migrations/0003_strategy_public_market_data.sql 적용이 필요합니다."
+        : "공개 전략 거래일 조회에 실패했습니다.",
+      migrationMissing ? 503 : 500,
+    );
+  }
+  return { days: normalizeTrainerDays(data ?? []), source: "sql_rpc" };
+}
+
 export async function loadTrainerDay(date: string): Promise<TrainerDayData> {
   const sb = await serverClient();
   const { data: contracts, error: contractError } = await sb
@@ -216,6 +243,30 @@ export async function loadTrainerDay(date: string): Promise<TrainerDayData> {
   if (error) throw new TrainerDataError("봉 데이터를 불러오지 못했습니다.", 500);
 
   const mapped = minuteRowsToBars(bars ?? []);
+  const compact = toTrainerBars(mapped, date);
+  return { date, bars: compact, source: compact.length > 0 ? "supabase" : "none" };
+}
+
+export async function loadPublicStrategyDay(date: string): Promise<TrainerDayData> {
+  const sb = await publicMarketDataClient();
+  const { data, error } = await sb.rpc("strategy_public_day", { requested_date: date });
+  if (error) {
+    const migrationMissing = error.code === "PGRST202" || error.code === "42883" || error.code === "42501";
+    throw new TrainerDataError(
+      migrationMissing
+        ? "공개 전략 데이터베이스 설정을 확인해 주세요. supabase/migrations/0003_strategy_public_market_data.sql 적용이 필요합니다."
+        : "공개 전략 봉 데이터 조회에 실패했습니다.",
+      migrationMissing ? 503 : 500,
+    );
+  }
+  const parsed = z.array(MinuteBarRowSchema).safeParse(data ?? []);
+  if (!parsed.success) {
+    throw new TrainerDataError("공개 전략 봉 데이터 형식이 올바르지 않습니다.", 502);
+  }
+  const mapped = minuteRowsToBars(parsed.data);
+  if (mapped.length !== parsed.data.length || mapped.some((bar) => !Number.isFinite(bar.time))) {
+    throw new TrainerDataError("공개 전략 봉 데이터에 유효하지 않은 시각이 있습니다.", 502);
+  }
   const compact = toTrainerBars(mapped, date);
   return { date, bars: compact, source: compact.length > 0 ? "supabase" : "none" };
 }
