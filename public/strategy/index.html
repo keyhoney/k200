@@ -35,7 +35,6 @@
     <header>
       <div class="brand">
         <h1>미니코스피200선물 WMA20 전략 백테스트</h1>
-        <p>완성된 1분봉·3분봉으로 과거 전략을 검증합니다. 실제 주문은 전송하지 않습니다.</p>
       </div>
       <div class="head-actions">
         <label for="daySelect">거래일</label>
@@ -96,14 +95,13 @@
     </section>
 
     <details class="panel" id="settings">
-      <summary>전략 실행 설정 · 기본값은 매매 전략.md 기준</summary>
+      <summary>전략 실행 설정</summary>
       <div class="settings">
-        <p class="settings-note">값을 변경하면 이 브라우저에만 저장됩니다. JSON 다운로드로 설정 파일을 보관할 수 있습니다. 거래일 비교는 동일 설정으로 다시 실행하세요.</p>
         <div class="fields" id="configFields"></div>
         <label class="field" style="margin-top:10px;display:flex;align-items:center;gap:8px">
           <input id="allowReentry" type="checkbox" checked style="width:auto"> 트레일링 후 조건부 재진입 허용
         </label>
-        <p class="warning">기본 운용 수량 2계약, 포인트 가치 50,000원, 수수료율 0.002%, 1틱 슬리피지 0.02pt입니다. 설정 변경 결과는 참고용 과거 백테스트이며 미래 수익을 보장하지 않습니다.</p>
+        <p class="warning">기본 운용 수량 2계약, 포인트 가치 50,000원, 수수료율 0.002%, 1틱 슬리피지 0.02pt</p>
         <div class="settings-actions">
           <button class="button primary" id="saveConfig">설정 저장 및 재실행</button>
           <button class="button" id="downloadConfig">JSON 다운로드</button>
@@ -111,7 +109,6 @@
         </div>
       </div>
     </details>
-    <footer>시간 표시는 한국 표준시(KST)입니다. 봉 데이터는 로그인된 계정의 Supabase minute_bars에서 읽습니다. 전략 규칙: <a href="./매매%20전략.md" style="color:var(--cyan)">매매 전략.md</a></footer>
   </main>
   <script type="module">
     import { loadConfig } from "./js/strategy-config.js";
