@@ -1,0 +1,32 @@
+{
+  "name": "미니코스피200선물 WMA20 전략",
+  "version": 1,
+  "description": "매매 전략.md를 기본값으로 하는 과거데이터 백테스트 설정. 실제 주문 기능 없음.",
+  "params": {
+    "wmaPeriod": 20,
+    "atrPeriod": 14,
+    "rMin": 2.5,
+    "rMax": 4.0,
+    "contactTolerance": 0.2,
+    "longSlope": 0.05,
+    "shortSlope": -0.05,
+    "entryStart": 45,
+    "entryEnd": 385,
+    "forceExit": 409,
+    "quantity": 2,
+    "pointValue": 50000,
+    "tick": 0.02,
+    "feeRate": 0.00002,
+    "signalValidMinutes": 15,
+    "originalMaxHold": 60,
+    "reentryMaxHold": 30,
+    "reentryWatchMinutes": 30,
+    "firstTargetR": 0.55,
+    "protectR": 0.15,
+    "trailStartR": 1.5,
+    "trailAtrMultiple": 0.25,
+    "reentryStopR": 0.25,
+    "reentryTouch": 0.02,
+    "allowReentry": true
+  }
+}

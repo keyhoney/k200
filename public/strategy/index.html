@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>WMA20 전략 백테스트</title>
+  <script src="https://unpkg.com/lightweight-charts@5/dist/lightweight-charts.standalone.production.js"></script>
+  <style>
+    :root{color-scheme:dark;--bg:#090d15;--panel:#111827;--panel2:#0d1420;--line:#273244;--text:#e5edf8;--muted:#91a0b5;--cyan:#5be0ed;--red:#ff7278;--blue:#69aaff;--green:#63d8a1}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Pretendard","Malgun Gothic",system-ui,sans-serif}
+    button,input,select{font:inherit}button{cursor:pointer;color:inherit}.app{max-width:1640px;margin:auto;padding:18px;display:grid;gap:14px}
+    header,.panel,.chart-card,.summary-card{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+    header{display:flex;align-items:center;gap:18px;padding:14px 18px;flex-wrap:wrap}.brand{margin-right:auto}.brand h1{font-size:18px;margin:0}.brand p{margin:3px 0 0;color:var(--muted);font-size:12px}
+    .head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.head-actions select,.button,.field input{border:1px solid var(--line);border-radius:8px;background:#0b1220;padding:8px 11px;color:var(--text)}
+    .button{font-weight:700}.button.primary{background:#087f92;border-color:#0aa5b7}.button:hover{filter:brightness(1.13)}.button:disabled{opacity:.55;cursor:progress}
+    .status{padding:10px 14px;border:1px solid #185865;border-radius:9px;background:#0c2731;color:#b9eff5}.status.error{border-color:#78363a;background:#30191d;color:#ffc6c8}.status[hidden]{display:none}
+    .progress{height:3px;background:#1a2535;border-radius:9px;overflow:hidden}.progress span{display:block;width:0;height:100%;background:var(--cyan);transition:width .15s}
+    .summary{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px}.summary-card{padding:12px 15px}.summary-card span{display:block;color:var(--muted);font-size:11px}.summary-card b{display:block;margin-top:3px;font-size:19px;font-variant-numeric:tabular-nums}
+    .positive{color:var(--red)!important}.negative{color:var(--blue)!important}.flat{color:var(--muted)!important}
+    .charts{display:grid;grid-template-columns:1fr;gap:12px}.chart-card{overflow:hidden}.chart-title{padding:8px 13px;border-bottom:1px solid var(--line);font-size:12px;font-weight:800}.chart{height:310px}
+    .panel{overflow:hidden}.panel-title{padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px;font-weight:800;display:flex;align-items:center;gap:10px}
+    .table-wrap{overflow:auto;max-height:390px}table{width:100%;border-collapse:collapse;white-space:nowrap;font-size:12px}th,td{text-align:right;padding:8px 11px;border-bottom:1px solid #1e2939;font-variant-numeric:tabular-nums}th{position:sticky;top:0;background:#141e2e;color:var(--muted);font-size:10px;z-index:1}th:first-child,td:first-child{text-align:left}
+    .empty{color:var(--muted);text-align:center;padding:24px}.tag{border:1px solid var(--line);border-radius:20px;padding:2px 8px;font-size:10px;color:var(--muted)}
+    details summary{cursor:pointer;font-weight:800;padding:12px 15px}.settings{padding:0 15px 15px}.settings-note{margin:0 0 12px;color:var(--muted);font-size:11px}
+    .fields{display:grid;grid-template-columns:repeat(4,minmax(155px,1fr));gap:9px}.field{display:grid;gap:4px;font-size:11px;color:var(--muted)}.field input{width:100%;padding:7px 8px}
+    .settings-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.warning{font-size:11px;color:#edc27a}
+    footer{font-size:11px;color:var(--muted);padding:0 2px}
+    @media(max-width:850px){.summary{grid-template-columns:repeat(2,minmax(120px,1fr))}.fields{grid-template-columns:repeat(2,minmax(130px,1fr))}.chart{height:260px}}
+    @media(max-width:520px){.app{padding:9px}.head-actions{width:100%}.fields{grid-template-columns:1fr}.summary-card b{font-size:16px}}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="brand">
+        <h1>미니코스피200선물 WMA20 전략 백테스트</h1>
+        <p>완성된 1분봉·3분봉으로 과거 전략을 검증합니다. 실제 주문은 전송하지 않습니다.</p>
+      </div>
+      <div class="head-actions">
+        <label for="daySelect">거래일</label>
+        <select id="daySelect" aria-label="거래일 선택"></select>
+        <button class="button" id="runDay">선택일 실행</button>
+        <button class="button primary" id="runAll">전체 일자 대시보드</button>
+      </div>
+    </header>
+    <div class="status" id="status" role="status" hidden></div>
+    <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+
+    <section class="summary" aria-label="선택일 성과">
+      <div class="summary-card"><span>선택일</span><b id="summaryDate">-</b></div>
+      <div class="summary-card"><span>당일 순손익 (수수료·슬리피지 반영)</span><b id="dayPnl">-</b></div>
+      <div class="summary-card"><span>완료 거래 / 승률</span><b id="dayTrades">-</b></div>
+      <div class="summary-card"><span>실현 손익 기준 MDD</span><b id="dayMdd">-</b></div>
+      <div class="summary-card"><span>원 거래 / 재진입</span><b id="dayTypes">-</b></div>
+    </section>
+
+    <section class="charts">
+      <article class="chart-card">
+        <div class="chart-title">1분봉 · 진입/청산 마커 · WMA</div>
+        <div class="chart" id="chart1" aria-label="1분봉 차트"></div>
+      </article>
+      <article class="chart-card">
+        <div class="chart-title">3분봉 · 방향 판단 · WMA20</div>
+        <div class="chart" id="chart3" aria-label="3분봉 차트"></div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">전략 체결 내역 <span class="tag" id="fillCount">0</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>구분</th><th>방향</th><th>진입 시각</th><th>진입가</th><th>청산 시각</th><th>청산가</th>
+            <th>수량</th><th>청산 사유</th><th>비용 전 손익</th><th>수수료</th><th>순손익</th>
+          </tr></thead>
+          <tbody id="fills"><tr><td class="empty" colspan="11">일자를 선택해 백테스트를 실행하세요.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">전체 Supabase 거래일 성과 <span class="tag" id="dashboardCount">미실행</span></div>
+      <div class="summary" style="padding:10px">
+        <div class="summary-card"><span>누적 순손익</span><b id="allPnl">-</b></div>
+        <div class="summary-card"><span>일평균 손익</span><b id="avgPnl">-</b></div>
+        <div class="summary-card"><span>수익 일수</span><b id="profitableDays">-</b></div>
+        <div class="summary-card"><span>전체 완료 거래 승률</span><b id="allWinRate">-</b></div>
+        <div class="summary-card"><span>일별 손익 기준 MDD</span><b id="allMdd">-</b></div>
+      </div>
+      <div class="table-wrap">
+        <table><thead><tr><th>거래일</th><th>완료 거래</th><th>승률</th><th>순손익</th></tr></thead>
+          <tbody id="days"><tr><td class="empty" colspan="4">전체 일자 백테스트를 실행하세요.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <details class="panel" id="settings">
+      <summary>전략 실행 설정 · 기본값은 매매 전략.md 기준</summary>
+      <div class="settings">
+        <p class="settings-note">값을 변경하면 이 브라우저에만 저장됩니다. JSON 다운로드로 설정 파일을 보관할 수 있습니다. 거래일 비교는 동일 설정으로 다시 실행하세요.</p>
+        <div class="fields" id="configFields"></div>
+        <label class="field" style="margin-top:10px;display:flex;align-items:center;gap:8px">
+          <input id="allowReentry" type="checkbox" checked style="width:auto"> 트레일링 후 조건부 재진입 허용
+        </label>
+        <p class="warning">기본 운용 수량 2계약, 포인트 가치 50,000원, 수수료율 0.002%, 1틱 슬리피지 0.02pt입니다. 설정 변경 결과는 참고용 과거 백테스트이며 미래 수익을 보장하지 않습니다.</p>
+        <div class="settings-actions">
+          <button class="button primary" id="saveConfig">설정 저장 및 재실행</button>
+          <button class="button" id="downloadConfig">JSON 다운로드</button>
+          <button class="button" id="resetConfig">기본값 복원</button>
+        </div>
+      </div>
+    </details>
+    <footer>시간 표시는 한국 표준시(KST)입니다. 봉 데이터는 로그인된 계정의 Supabase minute_bars에서 읽습니다. 전략 규칙: <a href="./매매%20전략.md" style="color:var(--cyan)">매매 전략.md</a></footer>
+  </main>
+  <script type="module">
+    import { loadConfig } from "./js/strategy-config.js";
+    import { WmaStrategyEngine } from "./js/strategy-engine.js";
+    import { StrategyCharts } from "./js/strategy-chart.js";
+    import { runStrategyApp } from "./js/strategy-main.js";
+    runStrategyApp({ loadConfig, WmaStrategyEngine, StrategyCharts });
+  </script>
+</body>
+</html>
