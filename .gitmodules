@@ -1,0 +1,3 @@
+[submodule "trainer-app"]
+	path = trainer-app
+	url = https://github.com/keyhoney/k200-trainer.git
