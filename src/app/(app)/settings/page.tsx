@@ -1,4 +1,5 @@
 import CsvUpload from "@/components/CsvUpload";
+import BarsCsvUpload from "@/components/BarsCsvUpload";
 import { page, pageSub, pageTitle, sectionTitle } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ export default function SettingsPage() {
         ))}
       </div>
       <CsvUpload />
+      <BarsCsvUpload />
     </main>
   );
 }

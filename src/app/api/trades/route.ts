@@ -17,6 +17,17 @@ export async function POST(req: Request) {
     const { data: user } = await sb.auth.getUser();
     if (!user.user) return Response.json({ error: "unauthorized" }, { status: 401 });
 
+    const importMemo = b.executions.find((execution) => execution.memo?.startsWith("CSV_IMPORT:"))?.memo;
+    if (importMemo) {
+      const { data: existing, error: existingError } = await sb
+        .from("trade_executions")
+        .select("id")
+        .eq("memo", importMemo)
+        .limit(1);
+      if (existingError) throw existingError;
+      if (existing?.length) return Response.json({ duplicate: true });
+    }
+
     const { data: trade, error: tErr } = await sb
       .from("trades")
       .insert({

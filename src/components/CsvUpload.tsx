@@ -1,72 +1,129 @@
 "use client";
 
 import { useState } from "react";
-import { btnGhost, cardPad, input, label, sectionTitle } from "@/components/ui";
+import { parseBrokerTradeCsv, type TradeCsvImportPlan } from "@/lib/brokerTradeCsv";
+import { btnGhost, cardPad, sectionTitle } from "@/components/ui";
 
-// Agnet.md §14 형식: trading_date,time,open,high,low,close,volume,open_interest
-// trading_date,time,open,high,low,close,volume,open_interest
-// 2026-10-12,09:00:00,350.10,350.25,349.90,350.20,1234,45678
+function decodeCsv(bytes: Uint8Array): string {
+  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return new TextDecoder("euc-kr").decode(bytes);
+  }
+}
+
 export default function CsvUpload() {
-  const [symbol, setSymbol] = useState("");
-  const [preview, setPreview] = useState<string[]>([]);
-  const [payload, setPayload] = useState<{ tradingDate: string; rows: unknown[] } | null>(null);
+  const [plan, setPlan] = useState<TradeCsvImportPlan | null>(null);
+  const [fileName, setFileName] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function onFile(f: File | undefined) {
-    if (!f) return;
-    const text = await f.text();
-    const lines = text.split(/\r?\n/).filter((l) => l.trim());
-    const header = lines[0]?.toLowerCase() ?? "";
-    const start = header.includes("trading_date") ? 1 : 0;
-    const rows: Array<Record<string, unknown>> = [];
-    let date = "";
-    for (const line of lines.slice(start, start + 2000)) {
-      const [d, t, o, h, l, c, v, oi] = line.split(",");
-      if (!d || !t) continue;
-      date = d.trim();
-      rows.push({
-        time: t.trim(), open: Number(o), high: Number(h), low: Number(l),
-        close: Number(c), volume: Number(v), open_interest: oi ? Number(oi) : undefined,
-      });
+  async function onFile(file: File | undefined) {
+    setPlan(null);
+    setFileName("");
+    setMsg("");
+    if (!file) return;
+    try {
+      const parsed = parseBrokerTradeCsv(decodeCsv(new Uint8Array(await file.arrayBuffer())));
+      setPlan(parsed);
+      setFileName(file.name);
+      const unmatched = parsed.unmatched.reduce((sum, item) => sum + item.quantity, 0);
+      setMsg(`${parsed.trades.length}건 매칭 · 미청산 ${unmatched}계약`);
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "CSV를 읽지 못했습니다.");
     }
-    setPreview(lines.slice(start, start + 5));
-    setPayload({ tradingDate: date, rows });
-    setMsg(`${rows.length}건 미리보기 (헤더 제외)`);
   }
 
   async function save() {
-    if (!payload || !symbol) {
-      setMsg("월물 심볼을 입력하세요.");
-      return;
-    }
+    if (!plan) return;
     setBusy(true);
     try {
-      const res = await fetch("/api/admin/bars", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tradingDate: payload.tradingDate, contractSymbol: symbol, rows: payload.rows }),
-      });
-      const json = (await res.json()) as { error?: unknown; count?: number };
-      if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "저장 실패");
-      setMsg(`저장됨 ${json.count}건 (source=manual_csv)`);
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "저장 실패");
+      const dates = [...new Set(plan.trades.map((trade) => trade.tradingDate))];
+      const contractIds = new Map<string, number>();
+      for (const date of dates) {
+        const response = await fetch(`/api/chart?date=${encodeURIComponent(date)}`);
+        const chart = (await response.json()) as { contract?: { id: number | null }; error?: unknown };
+        if (!response.ok || !chart.contract?.id) {
+          throw new Error(`${date} 월물 정보를 찾을 수 없습니다. 해당 날짜의 선물 계약 데이터가 있는지 확인하세요.`);
+        }
+        contractIds.set(date, chart.contract.id);
+      }
+
+      let saved = 0;
+      let duplicates = 0;
+      const failures: string[] = [];
+      const failedTrades: TradeCsvImportPlan["trades"] = [];
+      for (const trade of plan.trades) {
+        const response = await fetch("/api/trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...trade, contractId: contractIds.get(trade.tradingDate) }),
+        });
+        if (response.ok) {
+          const result = (await response.json().catch(() => null)) as { duplicate?: boolean } | null;
+          if (result?.duplicate) duplicates += 1;
+          else saved += 1;
+        } else {
+          const result = (await response.json().catch(() => null)) as { error?: unknown } | null;
+          const error = typeof result?.error === "string" ? result.error : `저장 실패 (${response.status})`;
+          failures.push(`${trade.tradingDate}: ${error}`);
+          failedTrades.push(trade);
+        }
+      }
+
+      const skipped = plan.unmatched.reduce((sum, item) => sum + item.quantity, 0);
+      const summary = `${saved}건 저장${duplicates ? ` · 중복 ${duplicates}건 건너뜀` : ""}`;
+      setMsg(
+        failures.length > 0
+          ? `${summary}, ${failures.length}건 실패${skipped ? ` · 미청산 ${skipped}계약 미저장` : ""} — ${failures.join(" / ")}`
+          : `${summary}${skipped ? ` · 미청산 ${skipped}계약 미저장` : ""}`,
+      );
+      if (saved + duplicates > 0) setPlan(failures.length === 0 ? null : { ...plan, trades: failedTrades });
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "저장 실패");
     } finally {
       setBusy(false);
     }
   }
 
+  const unmatchedQuantity = plan?.unmatched.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+
   return (
     <div className={cardPad}>
-      <h2 className={sectionTitle}>시세 CSV 수동 보완</h2>
-      <label className={label}>월물 심볼 (예: 101X12)
-        <input className={`${input} tnum`} value={symbol} onChange={(e) => setSymbol(e.target.value)} />
-      </label>
-      <input type="file" accept=".csv" onChange={(e) => onFile(e.target.files?.[0])} className="text-xs file:mr-2 file:rounded-lg file:border file:border-zinc-300 dark:file:border-zinc-700 file:px-3 file:py-1.5 file:text-xs file:bg-white dark:file:bg-zinc-900" />
-      {preview.length > 0 && <pre className="thin-scroll text-[11px] tnum bg-zinc-100 dark:bg-zinc-900 p-3 rounded-xl overflow-auto border border-zinc-200 dark:border-zinc-800">{preview.join("\n")}</pre>}
-      <button onClick={save} disabled={busy || !payload} className={`${btnGhost} self-start`}>
-        {busy ? "저장 중…" : "유효성 검사 후 저장"}
+      <h2 className={sectionTitle}>매매내역 CSV 가져오기</h2>
+      <p className="text-xs text-zinc-600 dark:text-zinc-400">
+        주문일, 매매구분, 체결수량, 평균단가 열이 있는 CSV를 선택하세요. 매수정정·매도정정도 매수·매도로 처리하고, 날짜별 시간순 FIFO로 진입·청산을 매칭합니다.
+      </p>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        이 업로더로 이미 저장된 매칭 거래는 원본 행 기준으로 중복 저장하지 않습니다.
+      </p>
+      <input
+        type="file"
+        accept=".csv,text/csv"
+        onChange={(event) => void onFile(event.target.files?.[0])}
+        className="text-xs file:mr-2 file:rounded-lg file:border file:border-zinc-300 dark:file:border-zinc-700 file:px-3 file:py-1.5 file:text-xs file:bg-white dark:file:bg-zinc-900"
+      />
+      {fileName && <p className="text-xs text-zinc-500">{fileName}</p>}
+      {plan && (
+        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 text-xs">
+          <p>저장 예정 {plan.trades.length}건</p>
+          {unmatchedQuantity > 0 && (
+            <p className="mt-1 text-amber-700 dark:text-amber-300">
+              미청산 {unmatchedQuantity}계약은 거래로 저장하지 않습니다.
+            </p>
+          )}
+          {plan.hasMissingTimes && (
+            <p className="mt-1 text-amber-700 dark:text-amber-300">
+              주문시각이 없어 해당 행은 CSV 순서 기준으로 09:00부터 시각을 생성합니다.
+            </p>
+          )}
+        </div>
+      )}
+      <button onClick={save} disabled={busy || !plan || plan.trades.length === 0} className={`${btnGhost} self-start`}>
+        {busy ? "저장 중…" : "매칭된 거래 저장"}
       </button>
       {msg && <p className="text-xs text-zinc-600 dark:text-zinc-400">{msg}</p>}
     </div>
