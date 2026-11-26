@@ -5,7 +5,7 @@ import { Badge, btnPrimary, cardPad, input, label, page, pageTitle, pnlText, sec
 
 interface Stats {
   overall: { count: number; wins: number; losses: number; winRate: number; net: number; profitFactor: number | null };
-  bySlot: Array<{ slot: string; lev: { count: number; net: number }; inv: { count: number; net: number } }>;
+  bySlot: Array<{ slot: string; long: { count: number; net: number }; short: { count: number; net: number } }>;
   byDirection?: Record<string, Stats["overall"]>;
   byWeekday?: Record<string, Stats["overall"]>;
   byGrade?: Record<string, Stats["overall"]>;
@@ -25,28 +25,28 @@ function SlotTable({ rows }: { rows: Stats["bySlot"] }) {
       (a, r) => ({ count: a.count + pick(r).count, net: a.net + pick(r).net }),
       { count: 0, net: 0 },
     );
-  const totLev = tot((r) => r.lev);
-  const totInv = tot((r) => r.inv);
-  const totAll = { count: totLev.count + totInv.count, net: totLev.net + totInv.net };
+  const totLong = tot((r) => r.long);
+  const totShort = tot((r) => r.short);
+  const totAll = { count: totLong.count + totShort.count, net: totLong.net + totShort.net };
   return (
     <table className="w-full">
       <thead>
         <tr className="border-b border-zinc-200 dark:border-zinc-800">
           <th className={thCls}>시간대</th>
-          <th className={`${thCls} text-right`}>레버리지</th>
-          <th className={`${thCls} text-right`}>인버스2X</th>
+          <th className={`${thCls} text-right`}>롱</th>
+          <th className={`${thCls} text-right`}>숏</th>
           <th className={`${thCls} text-right`}>합계</th>
         </tr>
       </thead>
       <tbody>
         {rows.map((r) => {
-          const count = r.lev.count + r.inv.count;
-          const net = r.lev.net + r.inv.net;
+          const count = r.long.count + r.short.count;
+          const net = r.long.net + r.short.net;
           return (
             <tr key={r.slot} className={trCls}>
               <td className={`${tdCls} tnum`}>{r.slot}</td>
-              <td className={`${tdCls} text-right`}>{cell(r.lev)}</td>
-              <td className={`${tdCls} text-right`}>{cell(r.inv)}</td>
+              <td className={`${tdCls} text-right`}>{cell(r.long)}</td>
+              <td className={`${tdCls} text-right`}>{cell(r.short)}</td>
               <td className={`${tdCls} text-right font-bold`}>{count === 0 ? <span className="text-zinc-400">—</span> : <span className="tnum">{net.toLocaleString()}원 <span className="font-normal text-zinc-400">({count})</span></span>}</td>
             </tr>
           );
@@ -55,8 +55,8 @@ function SlotTable({ rows }: { rows: Stats["bySlot"] }) {
       <tfoot>
         <tr className="border-t-2 border-zinc-300 dark:border-zinc-700 font-bold">
           <td className={tdCls}>합계</td>
-          <td className={`${tdCls} text-right`}>{cell(totLev)}</td>
-          <td className={`${tdCls} text-right`}>{cell(totInv)}</td>
+          <td className={`${tdCls} text-right`}>{cell(totLong)}</td>
+          <td className={`${tdCls} text-right`}>{cell(totShort)}</td>
           <td className={`${tdCls} text-right tnum`}>{cell(totAll)}</td>
         </tr>
       </tfoot>
@@ -86,7 +86,7 @@ function GroupTable({ title, groups, order }: { title: string; groups?: Record<s
             const g = groups[k];
             return (
               <tr key={k} className={trCls}>
-                <td className={tdCls}><Badge tone={k === "LONG" ? "long" : k === "SHORT" ? "short" : "neutral"}>{k}</Badge></td>
+                <td className={tdCls}><Badge tone={k === "LONG" ? "long" : k === "SHORT" ? "short" : "neutral"}>{k === "LONG" ? "롱" : k === "SHORT" ? "숏" : k}</Badge></td>
                 <td className={`${tdCls} text-right tnum`}>{g.count}</td>
                 <td className={`${tdCls} text-right tnum`}>{g.winRate.toFixed(1)}%</td>
                 <td className={`${tdCls} text-right tnum font-bold ${pnlText(g.net)}`}>{g.net.toLocaleString()}원</td>
@@ -159,7 +159,7 @@ export default function StatsClient() {
           </div>
           <GroupTable title="보유시간별" groups={s.byHolding} order={["~5분", "5~15분", "15~30분", "30분+", "기타"]} />
           <div className="card p-4 md:p-5 text-xs">
-            <h3 className={`${sectionTitle} mb-2`}>시간대 × 종목 <span className="font-normal text-zinc-500">진입 시각 기준, KST 30분 단위</span></h3>
+            <h3 className={`${sectionTitle} mb-2`}>시간대 × 방향 <span className="font-normal text-zinc-500">진입 시각 기준, KST 30분 단위</span></h3>
             <SlotTable rows={s.bySlot} />
           </div>
         </>

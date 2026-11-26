@@ -23,8 +23,8 @@ export interface TradeLine {
 }
 
 // Agnet.md §7: L/LX/S/SX + 색+모양 병행. 색만으로 구분하지 않음.
-// 주의: 차트는 선물 1분봉, 거래는 ETF(레버리지/인버스2X)라 가격 스케일이 다르다.
-// 따라서 진입·청산 가격을 차트에 그리지 않는다 — 시간 기반(마커·구간)만 표시.
+// 차트는 코스피200 선물 1분봉 — 미니 선물과 같은 지수를 추종하므로 체결가 입력 참고용으로 사용한다.
+// 진입·청산 가격선은 그리지 않고, 마커와 거래 구간(focusRange)으로 표시한다.
 export default function KChart({
   bars,
   markers = [],
@@ -105,7 +105,7 @@ export default function KChart({
         });
         wmaLine.setData(toLineData(times, wma(closes, 20)).map((p) => ({ ...p, time: p.time as UTCTimestamp })));
       }
-      // 진입·청산 가격선은 그리지 않음 (선물 차트 vs ETF 체결가 스케일 불일치).
+      // 진입·청산 가격선은 그리지 않고 마커·구간 강조만 사용한다.
       // 거래별 시간 구간 이동은 focusRange(전체 보기/거래 구간 보기)로 제공.
       if (markers.length > 0) {
         createSeriesMarkers(
@@ -162,7 +162,7 @@ export default function KChart({
         <button type="button" onClick={() => chartRef.current?.fit()} className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 font-medium transition hover:bg-zinc-100 dark:hover:bg-zinc-800">전체 보기</button>
         <button type="button" disabled={!selected} onClick={() => selected && chartRef.current?.focusRange(selected.entryTime, selected.exitTime)}
           className="rounded-lg border border-zinc-300 dark:border-zinc-700 px-2.5 py-1 font-medium transition hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-50">거래 구간 보기</button>
-        <span className="text-zinc-400 dark:text-zinc-500 text-[11px]">선물 참고용 차트 · 마커 클릭 시 상세 열림 · 차트 클릭 시 시각만 입력에 반영(ETF 가격은 직접 입력)</span>
+        <span className="text-zinc-400 dark:text-zinc-500 text-[11px]">선물 1분봉 · 마커 클릭 시 상세 열림 · 차트 클릭 시 시각·가격(봉 종가)이 빈 칸에 입력됨</span>
       </div>
       <div ref={ref} className="w-full" aria-label="1분봉 차트" />
     </div>

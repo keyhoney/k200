@@ -1,6 +1,6 @@
-// 대시보드 집계 — ETF 모드. 순수 집계(buildDashboardSummary)는 테스트 가능.
-import { calcETFTrade, ETF_LABEL } from "./etf";
-import { groupByETF, summarizeETF, type StatsSummary } from "./stats";
+// 대시보드 집계 — 미니 코스피200 선물 모드. 순수 집계(buildDashboardSummary)는 테스트 가능.
+import { calcFuturesTrade, futuresLabel, MINI_K200_MULTIPLIER } from "./futures";
+import { groupBy, summarize, type StatsSummary } from "./stats";
 
 export interface DashboardExecution {
   type: "ENTRY" | "EXIT";
@@ -20,7 +20,7 @@ export interface DashboardTrade {
 export interface DashboardRecent {
   id: string;
   tradingDate: string;
-  product: string;
+  directionLabel: string;
   net: number;
 }
 
@@ -30,13 +30,21 @@ export interface DashboardSummary {
   todayNet: number;
   todayCount: number;
   month: StatsSummary;
-  byProduct: Record<string, StatsSummary>;
+  byDirection: Record<string, StatsSummary>;
   recent: DashboardRecent[];
   source: "supabase" | "DEMO";
 }
 
 export function todayKST(now = new Date()): string {
   return now.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" });
+}
+
+function netOf(t: DashboardTrade): number {
+  return calcFuturesTrade(
+    t.direction,
+    t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee })),
+    MINI_K200_MULTIPLIER,
+  ).net;
 }
 
 export function buildDashboardSummary(
@@ -56,26 +64,20 @@ export function buildDashboardSummary(
     })),
   }));
   const todays = trades.filter((t) => t.tradingDate === today);
-  const todayNet = todays.reduce(
-    (a, t) => a + calcETFTrade(t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee }))).net,
-    0,
-  );
-  const byProductRaw = groupByETF(statTrades, (t) => t.direction);
-  const byProduct = Object.fromEntries(
-    Object.entries(byProductRaw).map(([k, v]) => [ETF_LABEL[k as "LONG" | "SHORT"] ?? k, v]),
-  );
+  const todayNet = todays.reduce((a, t) => a + netOf(t), 0);
+  const byDirection = groupBy(statTrades, (t) => futuresLabel(t.direction), MINI_K200_MULTIPLIER);
   return {
     today,
     monthStart,
     todayNet,
     todayCount: todays.length,
-    month: summarizeETF(statTrades),
-    byProduct,
+    month: summarize(statTrades, MINI_K200_MULTIPLIER),
+    byDirection,
     recent: trades.slice(0, 10).map((t) => ({
       id: t.id,
       tradingDate: t.tradingDate,
-      product: ETF_LABEL[t.direction] ?? t.direction,
-      net: calcETFTrade(t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee }))).net,
+      directionLabel: futuresLabel(t.direction),
+      net: netOf(t),
     })),
     source,
   };

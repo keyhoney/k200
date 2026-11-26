@@ -61,7 +61,7 @@ describe("WMA20 strategy backtest", () => {
     });
     expect(result.trades[0].exitPrice).toBeLessThan(result.trades[0].entryPrice - 2.5);
     expect(result.trades[0].fee).toBe(
-      Math.round((result.trades[0].entryPrice + result.trades[0].exitPrice) * 2 * 50000 * 0.00002),
+      Math.round((result.trades[0].entryPrice + result.trades[0].exitPrice) * 2 * 50000 * 0.0000185),
     );
     expect(result.trades[0].net).toBeLessThan(0);
   });

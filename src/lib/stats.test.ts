@@ -4,10 +4,10 @@ import { buildInsights, calcStreaks, holdingBucket, pivotBySlot, slotOf, weekday
 const t = (direction: "LONG" | "SHORT", executedAt: string, net: number): StatTrade => ({
   direction,
   executedAt,
-  // (exit-entry)*qty-fee == net 이 되도록 맞춤
+  // 승수 1로 집계하면 방향까지 반영해 net 이 되도록 맞춤
   executions: [
     { type: "ENTRY", price: 10000, quantity: 1, fee: 0 },
-    { type: "EXIT", price: 10000 + net, quantity: 1, fee: 0 },
+    { type: "EXIT", price: direction === "LONG" ? 10000 + net : 10000 - net, quantity: 1, fee: 0 },
   ],
 });
 
@@ -30,20 +30,26 @@ describe("slotOf", () => {
 });
 
 describe("pivotBySlot", () => {
-  it("splits rows by slot and columns by product", () => {
+  it("splits rows by slot and columns by direction", () => {
     const rows = pivotBySlot([
       t("LONG", "2026-10-12T09:05:00+09:00", 1000),
       t("SHORT", "2026-10-12T09:10:00+09:00", -500),
       t("LONG", "2026-10-12T10:05:00+09:00", 2000),
-    ]);
+    ], 1);
     // 정규장 13슬롯, 기타 없음
     expect(rows).toHaveLength(13);
     const first = rows[0];
     expect(first.slot).toBe("09:00-09:30");
-    expect(first.lev).toEqual({ count: 1, net: 1000 });
-    expect(first.inv).toEqual({ count: 1, net: -500 });
-    expect(rows[2]).toMatchObject({ slot: "10:00-10:30", lev: { count: 1, net: 2000 } });
-    expect(rows[1].lev.count).toBe(0);
+    expect(first.long).toEqual({ count: 1, net: 1000 });
+    expect(first.short).toEqual({ count: 1, net: -500 });
+    expect(rows[2]).toMatchObject({ slot: "10:00-10:30", long: { count: 1, net: 2000 } });
+    expect(rows[1].long.count).toBe(0);
+  });
+
+  it("uses the futures multiplier when provided", () => {
+    const rows = pivotBySlot([t("LONG", "2026-10-12T09:05:00+09:00", 0.5)], 50_000);
+    // 0.5pt x 50,000원 = 25,000원
+    expect(rows[0].long.net).toBe(25_000);
   });
 });
 

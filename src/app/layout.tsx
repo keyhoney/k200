@@ -7,7 +7,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
   title: "K200 Trading Journal",
-  description: "코스피200 선물 매매 복기 일지",
+  description: "미니 코스피200 선물 매매 복기 일지",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

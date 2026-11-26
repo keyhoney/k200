@@ -29,12 +29,12 @@ export default async function DashboardPage() {
 
       <div className="grid gap-3 md:grid-cols-2">
         <div className="card p-4 md:p-5 flex flex-col gap-2">
-          <h2 className={sectionTitle}>종목별 · 이번 달</h2>
-          {Object.keys(d.byProduct).length === 0 && <Empty>기록 없음</Empty>}
-          {Object.entries(d.byProduct).map(([k, v]) => (
+          <h2 className={sectionTitle}>방향별 · 이번 달</h2>
+          {Object.keys(d.byDirection).length === 0 && <Empty>기록 없음</Empty>}
+          {Object.entries(d.byDirection).map(([k, v]) => (
             <div key={k} className="flex items-center justify-between border-b border-zinc-200/60 dark:border-zinc-800 py-1.5 text-xs last:border-0">
               <span className="flex items-center gap-2">
-                <Badge tone={k === "LONG" ? "long" : k === "SHORT" ? "short" : "neutral"}>{k}</Badge>
+                <Badge tone={k === "롱" ? "long" : k === "숏" ? "short" : "neutral"}>{k}</Badge>
                 <span className="text-zinc-500">{v.count}건</span>
               </span>
               <span className={`tnum font-bold ${v.net > 0 ? "text-red-600 dark:text-red-400" : v.net < 0 ? "text-blue-600 dark:text-blue-400" : ""}`}>
@@ -50,7 +50,7 @@ export default async function DashboardPage() {
             <div key={t.id} className="flex items-center justify-between gap-2 border-b border-zinc-200/60 dark:border-zinc-800 py-1.5 text-xs last:border-0">
               <span className="flex items-center gap-2">
                 <span className="tnum text-zinc-500">{t.tradingDate}</span>
-                <Badge tone={t.product === "LONG" ? "long" : t.product === "SHORT" ? "short" : "neutral"}>{t.product}</Badge>
+                <Badge tone={t.directionLabel === "롱" ? "long" : t.directionLabel === "숏" ? "short" : "neutral"}>{t.directionLabel}</Badge>
               </span>
               <span className="flex items-center gap-2">
                 <span className={`tnum font-bold ${t.net > 0 ? "text-red-600 dark:text-red-400" : t.net < 0 ? "text-blue-600 dark:text-blue-400" : ""}`}>

@@ -1,5 +1,5 @@
 // 분할 진입/청산 초안 관리 — TradeForm/TradeEditForm 공용 순수 로직.
-import { buildETFExecutions, calcETFTrade, calcExecutionFee } from "./etf";
+import { calcFuturesFee, calcFuturesTrade, type FuturesDirection } from "./futures";
 import { validateTrade, type TradeBody } from "./tradeSchema";
 
 export interface DraftExecution {
@@ -22,8 +22,8 @@ export function nextKey(): number {
 
 export function defaultDrafts(tradingDate: string): DraftExecution[] {
   return [
-    { key: nextKey(), type: "ENTRY", dt: `${tradingDate}T09:32`, price: "", qty: "10" },
-    { key: nextKey(), type: "EXIT", dt: `${tradingDate}T09:41`, price: "", qty: "10" },
+    { key: nextKey(), type: "ENTRY", dt: `${tradingDate}T09:32`, price: "", qty: "1" },
+    { key: nextKey(), type: "EXIT", dt: `${tradingDate}T09:41`, price: "", qty: "1" },
   ];
 }
 
@@ -31,7 +31,7 @@ export function defaultDrafts(tradingDate: string): DraftExecution[] {
 export function draftsToBody(
   tradingDate: string,
   contractId: number,
-  direction: "LONG" | "SHORT",
+  direction: FuturesDirection,
   drafts: DraftExecution[],
   extra?: Partial<TradeBody>,
 ): TradeBody | { error: string } {
@@ -42,13 +42,13 @@ export function draftsToBody(
     const price = Number(d.price);
     const qty = Number(d.qty);
     if (!(price > 0)) return { error: `${n}번째 체결: 가격을 입력하세요.` };
-    if (!Number.isInteger(qty) || qty < 1) return { error: `${n}번째 체결: 수량은 1 이상의 정수(주).` };
+    if (!Number.isInteger(qty) || qty < 1) return { error: `${n}번째 체결: 수량은 1 이상의 정수(계약).` };
     executions.push({
       type: d.type,
       executedAt: toISO(d.dt),
       price,
       quantity: qty,
-      fee: calcExecutionFee(price, qty),
+      fee: calcFuturesFee(price, qty),
       memo: d.memo?.trim() ? d.memo : undefined,
     });
   }
@@ -58,24 +58,16 @@ export function draftsToBody(
   return body;
 }
 
-export function previewDrafts(drafts: DraftExecution[]): ReturnType<typeof calcETFTrade> | null {
-  const prices = drafts.map((d) => ({ type: d.type, price: Number(d.price), quantity: Number(d.qty) }));
-  if (prices.some((p) => !(p.price > 0) || !Number.isInteger(p.quantity) || p.quantity < 1)) return null;
-  if (!prices.some((p) => p.type === "ENTRY") || !prices.some((p) => p.type === "EXIT")) return null;
+export function previewDrafts(
+  direction: FuturesDirection,
+  drafts: DraftExecution[],
+): ReturnType<typeof calcFuturesTrade> | null {
+  const executions = drafts.map((d) => ({ type: d.type, price: Number(d.price), quantity: Number(d.qty) }));
+  if (executions.some((p) => !(p.price > 0) || !Number.isInteger(p.quantity) || p.quantity < 1)) return null;
+  if (!executions.some((p) => p.type === "ENTRY") || !executions.some((p) => p.type === "EXIT")) return null;
   try {
-    return calcETFTrade(buildETFExecutionsFromDrafts(drafts));
+    return calcFuturesTrade(direction, executions);
   } catch {
     return null;
   }
 }
-
-function buildETFExecutionsFromDrafts(drafts: DraftExecution[]) {
-  // calcETFTrade는 가중평균이므로 순서 무관 — fee는 자동 계산
-  return drafts.map((d) => ({
-    type: d.type as "ENTRY" | "EXIT",
-    price: Number(d.price),
-    quantity: Number(d.qty),
-  }));
-}
-
-export { buildETFExecutions };

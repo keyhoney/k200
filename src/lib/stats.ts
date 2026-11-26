@@ -1,5 +1,4 @@
 // 통계 집계 (Agnet.md §12) — 투자조언 문구 생성 금지, 집계 서술만.
-import { calcETFTrade } from "./etf";
 import { calcTrade, type Direction } from "./pnl";
 
 export interface StatTrade {
@@ -69,47 +68,9 @@ export function groupBy<T extends StatTrade>(
   return out;
 }
 
-// ETF(레버리지/인버스2X) 집계 — 승수 없이 (매도가-매수가)x수량-수수료.
-// LONG/SHORT는 종목 구분용이며 손익 부호에 영향 없음.
-export function etfNet(t: StatTrade): number {
-  return calcETFTrade(t.executions).net;
-}
-
-export function summarizeETF(trades: StatTrade[]): StatsSummary {
-  const nets = trades.map(etfNet);
-  const wins = nets.filter((n) => n > 0);
-  const losses = nets.filter((n) => n < 0);
-  const grossProfit = wins.reduce((a, b) => a + b, 0);
-  const grossLoss = Math.abs(losses.reduce((a, b) => a + b, 0));
-  return {
-    count: nets.length,
-    wins: wins.length,
-    losses: losses.length,
-    flats: nets.length - wins.length - losses.length,
-    winRate: nets.length ? (wins.length / nets.length) * 100 : 0,
-    grossProfit,
-    grossLoss,
-    net: grossProfit - grossLoss,
-    avgWin: wins.length ? grossProfit / wins.length : 0,
-    avgLoss: losses.length ? grossLoss / losses.length : 0,
-    profitFactor: grossLoss > 0 ? grossProfit / grossLoss : null,
-    maxWin: wins.length ? Math.max(...wins) : 0,
-    maxLoss: losses.length ? Math.min(...losses) : 0,
-  };
-}
-
-export function groupByETF<T extends StatTrade>(
-  trades: T[],
-  key: (t: T) => string,
-): Record<string, StatsSummary> {
-  const groups: Record<string, T[]> = {};
-  for (const t of trades) {
-    const k = key(t);
-    (groups[k] ??= []).push(t);
-  }
-  const out: Record<string, StatsSummary> = {};
-  for (const [k, v] of Object.entries(groups)) out[k] = summarizeETF(v);
-  return out;
+// 미니 코스피200 선물 집계 — 방향·승수를 반영한 순손익.
+export function futuresNet(t: StatTrade, multiplier: number): number {
+  return calcTrade(t.direction, t.executions, multiplier).net;
 }
 
 // 진입 시각 기준 30분 슬롯 × 종목 피벗 (정규장 09:00~15:30, KST).
@@ -144,25 +105,25 @@ export interface SlotCell {
 
 export interface SlotRow {
   slot: string;
-  lev: SlotCell;
-  inv: SlotCell;
+  long: SlotCell;
+  short: SlotCell;
 }
 
-export function pivotBySlot(trades: StatTrade[]): SlotRow[] {
+export function pivotBySlot(trades: StatTrade[], multiplier: number): SlotRow[] {
   const rows: SlotRow[] = [];
   for (let s = SLOT_START_MIN; s < SLOT_END_MIN; s += SLOT_LEN_MIN) {
-    rows.push({ slot: slotLabel(s), lev: { count: 0, net: 0 }, inv: { count: 0, net: 0 } });
+    rows.push({ slot: slotLabel(s), long: { count: 0, net: 0 }, short: { count: 0, net: 0 } });
   }
-  const other: SlotRow = { slot: "기타", lev: { count: 0, net: 0 }, inv: { count: 0, net: 0 } };
+  const other: SlotRow = { slot: "기타", long: { count: 0, net: 0 }, short: { count: 0, net: 0 } };
   let hasOther = false;
   for (const t of trades) {
     const key = slotOf(t.executedAt);
     const row = rows.find((r) => r.slot === key);
     const target = row ?? other;
     if (!row) hasOther = true;
-    const cell = t.direction === "LONG" ? target.lev : target.inv;
+    const cell = t.direction === "LONG" ? target.long : target.short;
     cell.count += 1;
-    cell.net += etfNet(t);
+    cell.net += futuresNet(t, multiplier);
   }
   return hasOther ? [...rows, other] : rows;
 }
@@ -236,7 +197,7 @@ export function buildInsights(input: {
   const s = input.byDirection["SHORT"];
   if (l && s && l.count > 0 && s.count > 0) {
     out.push(
-      `LONG ${l.count}건 평균 ${Math.round(avgNet(l)).toLocaleString()}원 / SHORT ${s.count}건 평균 ${Math.round(avgNet(s)).toLocaleString()}원`,
+      `롱 ${l.count}건 평균 ${Math.round(avgNet(l)).toLocaleString()}원 / 숏 ${s.count}건 평균 ${Math.round(avgNet(s)).toLocaleString()}원`,
     );
   }
   if (input.streaks.maxLossStreak >= 2) out.push(`최대 연속 손실 ${input.streaks.maxLossStreak}회 기록 있음`);

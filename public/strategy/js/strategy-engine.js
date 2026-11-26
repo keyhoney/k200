@@ -12,7 +12,7 @@ const DEFAULTS = {
   quantity: 2,
   pointValue: 50000,
   tick: 0.02,
-  feeRate: 0.00002,
+  feeRate: 0.0000185,
   signalValidMinutes: 15,
   originalMaxHold: 60,
   reentryMaxHold: 30,

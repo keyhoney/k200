@@ -8,7 +8,7 @@ import TradeEditForm from "./TradeEditForm";
 import JournalForm from "./JournalForm";
 import { toMarkers } from "@/lib/markers";
 import { aggregateBars, type Bar } from "@/lib/bars";
-import { calcETFTrade, ETF_LABEL } from "@/lib/etf";
+import { calcFuturesTrade, FUTURES_LABEL } from "@/lib/futures";
 import type { ChartData } from "@/lib/chartData";
 import { isFixedHoliday, isWeekend, shiftTradingDay } from "@/lib/tradingDays";
 import DatePicker from "./DatePicker";
@@ -24,6 +24,7 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickedDt, setPickedDt] = useState<string | null>(null);
+  const [pickedPrice, setPickedPrice] = useState<number | null>(null);
 
   useEffect(() => setData(initial), [initial]);
 
@@ -42,7 +43,7 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
   const tradeStats = useMemo(() => {
     const map = new Map<string, { avgEntry: number; avgExit: number; net: number; firstEntry: string; lastExit: string }>();
     for (const t of data.trades) {
-      const r = calcETFTrade(t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee })));
+      const r = calcFuturesTrade(t.direction, t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee })));
       const entries = t.executions.filter((e) => e.type === "ENTRY").map((e) => e.executedAt).sort();
       const exits = t.executions.filter((e) => e.type === "EXIT").map((e) => e.executedAt).sort();
       map.set(t.id, { avgEntry: r.avgEntry, avgExit: r.avgExit, net: r.net, firstEntry: entries[0] ?? "", lastExit: exits.at(-1) ?? "" });
@@ -65,7 +66,7 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
       data.trades.flatMap((t) => {
         const s = tradeStats.get(t.id);
         if (!s || !s.firstEntry || !s.lastExit) return [];
-        // 시간만 사용 — 가격(ETF 체결가)은 선물 차트 스케일과 달라 그리지 않음
+        // 시간만 사용 — 가격선은 거래 구간 강조로 대체
         return [{
           tradeId: t.id,
           direction: t.direction,
@@ -129,10 +130,10 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
       ) : (
         <>
           <div className="card p-4 md:p-5">
-            <h2 className={`${sectionTitleCls} mb-2`}>1분봉 <span className="font-normal text-zinc-500">선물 참고용</span></h2>
+            <h2 className={`${sectionTitleCls} mb-2`}>1분봉 <span className="font-normal text-zinc-500">미니 코스피200 선물 기준</span></h2>
             <KChart bars={data.bars} markers={markers} lines={lines}
               selectedTradeId={selectedId} onSelectTrade={(id) => { setSelectedId(id); setEditingId(null); }}
-              onPickBar={(b) => setPickedDt(barToDtLocal(b))} />
+              onPickBar={(b) => { setPickedDt(barToDtLocal(b)); setPickedPrice(b.close); }} />
           </div>
 
           <div className="card p-4 md:p-5">
@@ -148,7 +149,7 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
             <h2 className={sectionTitleCls}>거래 목록 ({data.trades.length})</h2>
             {data.trades.length === 0 && <Empty>아직 입력된 거래가 없습니다.</Empty>}
             {data.trades.map((t) => {
-              const r = calcETFTrade(t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee })));
+              const r = calcFuturesTrade(t.direction, t.executions.map((e) => ({ type: e.type, price: e.price, quantity: e.quantity, fee: e.fee })));
               const s = tradeStats.get(t.id);
               const sel = t.id === selectedId;
               return (
@@ -156,10 +157,10 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
                   <button className="text-left flex-1 flex flex-col gap-1" onClick={() => { setSelectedId(sel ? null : t.id); setEditingId(null); }}
                     title={t.executions.map((e) => `${e.type} ${fmtT(e.executedAt)} ${e.price.toLocaleString()}원 x${e.quantity}${e.memo ? ` (${e.memo})` : ""}`).join("\n")}>
                     <span className="flex items-center gap-1.5">
-                      <Badge tone={t.direction === "LONG" ? "long" : "short"}>{ETF_LABEL[t.direction] ?? t.direction}</Badge>
+                      <Badge tone={t.direction === "LONG" ? "long" : "short"}>{FUTURES_LABEL[t.direction] ?? t.direction}</Badge>
                       <span className="tnum text-zinc-500">{s?.firstEntry ? fmtT(s.firstEntry) : "—"} → {s?.lastExit ? fmtT(s.lastExit) : "—"}</span>
                     </span>
-                    <span className="tnum">{r.avgEntry.toLocaleString()}원 → {r.avgExit.toLocaleString()}원 · <span className={`font-bold ${pnlTextCls(r.net)}`}>{r.net.toLocaleString()}원 ({r.returnRate.toFixed(2)}%)</span> · 체결 {t.executions.length}건</span>
+                    <span className="tnum">{r.avgEntry.toFixed(2)}pt → {r.avgExit.toFixed(2)}pt · <span className={`font-bold ${pnlTextCls(r.net)}`}>{r.net.toLocaleString()}원 ({r.points.toFixed(2)}pt)</span> · 체결 {t.executions.length}건</span>
                   </button>
                   <span className="flex gap-2 shrink-0">
                     <button className="text-indigo-600 dark:text-indigo-400 hover:underline font-medium" onClick={() => { setEditingId(t.id); setSelectedId(t.id); }}>수정</button>
@@ -173,7 +174,7 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
           {selected && !editingId && (
             <div className="card p-4 text-xs flex flex-col gap-1.5 border-indigo-300 dark:border-indigo-800">
               <div className="flex items-center justify-between">
-                <h3 className="font-bold flex items-center gap-2">거래 상세 <Badge tone={selected.direction === "LONG" ? "long" : "short"}>{ETF_LABEL[selected.direction]}</Badge></h3>
+                <h3 className="font-bold flex items-center gap-2">거래 상세 <Badge tone={selected.direction === "LONG" ? "long" : "short"}>{FUTURES_LABEL[selected.direction]}</Badge></h3>
                 <button className="text-zinc-500 hover:underline" onClick={() => setSelectedId(null)}>닫기</button>
               </div>
               {selected.strategyName && <p>전략: {selected.strategyName}{selected.setupGrade ? ` (${selected.setupGrade})` : ""}</p>}
@@ -197,12 +198,12 @@ export default function ReviewClient({ initial }: { initial: ChartData }) {
 
           {pickedDt && (
             <p className="text-xs text-zinc-600 dark:text-zinc-400">
-              차트 선택 시각: {pickedDt.replace("T", " ")} → 아래 입력에 반영됨 (가격은 ETF 체결가를 직접 입력)
-              <button className="underline ml-2" onClick={() => setPickedDt(null)}>해제</button>
+              차트 선택: {pickedDt.replace("T", " ")}{pickedPrice != null ? ` · ${pickedPrice.toFixed(2)}pt` : ""} → 아래 입력의 빈 칸에 반영됨
+              <button className="underline ml-2" onClick={() => { setPickedDt(null); setPickedPrice(null); }}>해제</button>
             </p>
           )}
           <TradeForm tradingDate={data.tradingDate} contractId={data.contract.id} onSaved={refresh}
-            initialDt={pickedDt ?? undefined} />
+            initialDt={pickedDt ?? undefined} initialPrice={pickedPrice ?? undefined} />
         </div>
         <JournalForm date={data.tradingDate} />
       </section>

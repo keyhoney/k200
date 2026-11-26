@@ -4,8 +4,8 @@ import { page, pageSub, pageTitle, sectionTitle } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 const NOTES = [
-  { t: "ETF 손익", d: "손익 = (매도가 − 매수가) × 수량 − 수수료. 수수료는 체결마다 0.004896% 자동 계산(매수·매도 양방향)." },
-  { t: "차트", d: "코스피200 선물 1분봉을 참고용으로 표시합니다. 거래 가격은 ETF 체결가를 직접 입력하세요." },
+  { t: "선물 손익", d: "미니 코스피200 선물 기준. 롱 = (청산가 − 진입가) × 50,000원 × 계약수, 숏 = (진입가 − 청산가) × 50,000원 × 계약수. 수수료는 체결금액의 0.00185%를 진입·청산 각각 자동 계산합니다." },
+  { t: "차트", d: "코스피200 선물 1분봉을 표시합니다. 차트를 클릭하면 시각과 가격(봉 종가)이 거래 입력의 빈 칸에 반영됩니다." },
   { t: "스크린샷", d: "Supabase Dashboard → Storage에서 private 버킷 screenshots 1회 생성 필요." },
 ];
 

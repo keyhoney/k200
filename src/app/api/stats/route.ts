@@ -1,13 +1,13 @@
 import { z } from "zod";
-import { buildInsights, calcStreaks, etfNet, groupByETF, holdingBucket, summarizeETF, pivotBySlot, weekdayOf } from "@/lib/stats";
-import { ETF_MULTIPLIER } from "@/lib/etf";
+import { buildInsights, calcStreaks, futuresNet, groupBy, holdingBucket, summarize, pivotBySlot, weekdayOf } from "@/lib/stats";
+import { MINI_K200_MULTIPLIER } from "@/lib/futures";
 
 const Query = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
-// GET /api/stats?from=&to= — 기본 통계 + 분류별 집계 (ETF 모드, 집계 서술만).
+// GET /api/stats?from=&to= — 기본 통계 + 분류별 집계 (미니 코스피200 선물, 집계 서술만).
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const parsed = Query.safeParse({
@@ -21,7 +21,7 @@ export async function GET(req: Request) {
     const { data: user } = await sb.auth.getUser();
     if (!user.user) return Response.json({ error: "unauthorized" }, { status: 401 });
 
-    const multiplier = ETF_MULTIPLIER;
+    const multiplier = MINI_K200_MULTIPLIER;
 
     let query = sb
       .from("trades")
@@ -61,14 +61,14 @@ export async function GET(req: Request) {
       };
     });
 
-    const overall = summarizeETF(trades);
-    const bySlot = pivotBySlot(trades);
-    const byDirection = groupByETF(trades, (t) => t.direction);
-    const byWeekday = groupByETF(trades, weekdayOf);
-    const byGrade = groupByETF(trades, (t) => t.setupGrade ?? "미지정");
-    const byRule = groupByETF(trades, (t) => (t.ruleFollowed == null ? "미기록" : t.ruleFollowed ? "지킴" : "어김"));
-    const byHolding = groupByETF(trades, holdingBucket);
-    const streaks = calcStreaks(trades.map(etfNet));
+    const overall = summarize(trades, multiplier);
+    const bySlot = pivotBySlot(trades, multiplier);
+    const byDirection = groupBy(trades, (t) => t.direction, multiplier);
+    const byWeekday = groupBy(trades, weekdayOf, multiplier);
+    const byGrade = groupBy(trades, (t) => t.setupGrade ?? "미지정", multiplier);
+    const byRule = groupBy(trades, (t) => (t.ruleFollowed == null ? "미기록" : t.ruleFollowed ? "지킴" : "어김"), multiplier);
+    const byHolding = groupBy(trades, holdingBucket, multiplier);
+    const streaks = calcStreaks(trades.map((t) => futuresNet(t, multiplier)));
     const insights = buildInsights({ byRule, byDirection, streaks });
 
     return Response.json({ overall, bySlot, byDirection, byWeekday, byGrade, byRule, byHolding, streaks, insights, multiplier });

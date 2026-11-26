@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { ETF_LABEL, type ETFDirection } from "@/lib/etf";
+import { useMemo, useState, useRef } from "react";
+import { FUTURES_FEE_RATE, FUTURES_LABEL, FUTURES_TICK_POINTS, MINI_K200_MULTIPLIER, type FuturesDirection } from "@/lib/futures";
 import { defaultDrafts, draftsToBody, nextKey, previewDrafts, type DraftExecution } from "@/lib/splitTrade";
 import { Badge, btnMini, btnPrimary, cardPad, input, label, pnlText, sectionTitle } from "@/components/ui";
 
 interface TradeRow {
   key: number;
-  product: ETFDirection;
+  product: FuturesDirection;
   drafts: DraftExecution[];
 }
 
@@ -23,33 +23,37 @@ export default function TradeForm({
   contractId,
   onSaved,
   initialDt,
+  initialPrice,
 }: {
   tradingDate: string;
   contractId: number | null;
   onSaved: () => void;
   initialDt?: string;
+  initialPrice?: number;
 }) {
   const keySeq = useRef(100);
   const [rows, setRows] = useState<TradeRow[]>(() => {
     const r = newRow(tradingDate, 0);
     if (initialDt) r.drafts[0].dt = initialDt;
+    if (initialDt && initialPrice) r.drafts[0].price = initialPrice.toFixed(2);
     return [r];
   });
   const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // 차트 클릭 입력: 시각만 반영 (선물 봉 종가는 ETF 가격과 달라 가격 자동채움 안 함)
-  const lastPick = useRef("");
-  const pickKey = initialDt ?? "";
-  if (pickKey !== lastPick.current && initialDt) {
-    lastPick.current = pickKey;
+  // 차트 클릭 입력: 시각과 가격(봉 종가)을 빈 칸에만 반영한다.
+  let lastPickKey = "";
+  const pickKey = initialDt ? `${initialDt}|${initialPrice ?? ""}` : "";
+  if (pickKey !== lastPickKey && initialDt) {
+    lastPickKey = pickKey;
     setRows((prev) => {
       const next = [...prev];
       const last = next[next.length - 1] ?? newRow(tradingDate, keySeq.current++);
       if (next.length === 0) next.push(last);
       const entry = last.drafts.find((d) => d.type === "ENTRY");
-      if (entry && !entry.price) {
+      if (entry) {
+        if (!entry.price && initialPrice) entry.price = initialPrice.toFixed(2);
         entry.dt = initialDt;
       }
       return [...next];
@@ -75,7 +79,7 @@ export default function TradeForm({
     let fee = 0;
     let count = 0;
     for (const r of rows) {
-      const p = previewDrafts(r.drafts);
+      const p = previewDrafts(r.product, r.drafts);
       if (p) {
         net += p.net;
         fee += p.fee;
@@ -132,19 +136,22 @@ export default function TradeForm({
   return (
     <div className={cardPad}>
       <h2 className={sectionTitle}>새 거래 입력 <span className="font-normal text-zinc-500">분할 체결 지원</span></h2>
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">한 줄 = 1매매. 진입/청산 행을 여러 개 추가해 분할 진입·청산 가능. 수수료 0.004896% 자동 반영. 차트는 선물 참고용 — 가격은 ETF 체결가를 직접 입력.</p>
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        미니 코스피200 선물 · 계약당 {MINI_K200_MULTIPLIER.toLocaleString()}원/pt · 수수료 {(FUTURES_FEE_RATE * 100).toFixed(5)}% 자동 반영.
+        한 줄 = 1매매, 진입/청산 행을 여러 개 추가해 분할 진입·청산할 수 있습니다. 차트를 클릭하면 시각과 가격(봉 종가)이 빈 칸에 채워집니다.
+      </p>
       <div className="flex flex-col gap-2.5">
         {rows.map((r, i) => {
-          const p = previewDrafts(r.drafts);
+          const p = previewDrafts(r.product, r.drafts);
           return (
             <div key={r.key} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 p-2.5 flex flex-col gap-2">
               <div className="flex gap-2 items-end">
                 <span className="text-xs font-bold text-zinc-500 self-center">#{i + 1}</span>
-                <Badge tone={r.product === "LONG" ? "long" : "short"}>{ETF_LABEL[r.product]}</Badge>
-                <label className={`${label} ml-auto w-36`}>종목
-                  <select className={input} value={r.product} onChange={(e) => setRow(r.key, { product: e.target.value as ETFDirection })}>
-                    <option value="LONG">{ETF_LABEL.LONG}(상승)</option>
-                    <option value="SHORT">{ETF_LABEL.SHORT}(하락)</option>
+                <Badge tone={r.product === "LONG" ? "long" : "short"}>{FUTURES_LABEL[r.product]}</Badge>
+                <label className={`${label} ml-auto w-36`}>방향
+                  <select className={input} value={r.product} onChange={(e) => setRow(r.key, { product: e.target.value as FuturesDirection })}>
+                    <option value="LONG">{FUTURES_LABEL.LONG}(매수)</option>
+                    <option value="SHORT">{FUTURES_LABEL.SHORT}(매도)</option>
                   </select>
                 </label>
               </div>
@@ -159,20 +166,20 @@ export default function TradeForm({
                   <label className={label}>시각
                     <input className={`${input} tnum`} type="datetime-local" value={d.dt} onChange={(e) => setDraft(r.key, d.key, { dt: e.target.value })} />
                   </label>
-                  <label className={label}>가격(원)
-                    <input className={`${input} tnum`} type="number" min={1} step={1} value={d.price} placeholder="예: 15230" onChange={(e) => setDraft(r.key, d.key, { price: e.target.value })} />
+                  <label className={label}>가격(pt)
+                    <input className={`${input} tnum`} type="number" min={FUTURES_TICK_POINTS} step={FUTURES_TICK_POINTS} value={d.price} placeholder="예: 350.15" onChange={(e) => setDraft(r.key, d.key, { price: e.target.value })} />
                   </label>
-                  <label className={label}>수량(주)
+                  <label className={label}>수량(계약)
                     <input className={`${input} tnum`} type="number" min={1} step={1} value={d.qty} onChange={(e) => setDraft(r.key, d.key, { qty: e.target.value })} />
                   </label>
                   <button type="button" className="text-xs text-zinc-400 hover:text-zinc-600 underline justify-self-end" onClick={() => setRow(r.key, { drafts: r.drafts.length <= 2 ? r.drafts : r.drafts.filter((x) => x.key !== d.key) })}>행삭제</button>
                 </div>
               ))}
               <div className="flex gap-2 items-center flex-wrap">
-                <button type="button" className={btnMini} onClick={() => setRow(r.key, { drafts: [...r.drafts, { key: nextKey(), type: "ENTRY", dt: `${tradingDate}T10:00`, price: "", qty: "10" }] })}>+ 진입</button>
-                <button type="button" className={btnMini} onClick={() => setRow(r.key, { drafts: [...r.drafts, { key: nextKey(), type: "EXIT", dt: `${tradingDate}T10:05`, price: "", qty: "10" }] })}>+ 청산</button>
+                <button type="button" className={btnMini} onClick={() => setRow(r.key, { drafts: [...r.drafts, { key: nextKey(), type: "ENTRY", dt: `${tradingDate}T10:00`, price: "", qty: "1" }] })}>+ 진입</button>
+                <button type="button" className={btnMini} onClick={() => setRow(r.key, { drafts: [...r.drafts, { key: nextKey(), type: "EXIT", dt: `${tradingDate}T10:05`, price: "", qty: "1" }] })}>+ 청산</button>
                 <span className="text-xs text-zinc-600 dark:text-zinc-400">
-                  {p ? <span className="tnum">순손익 <span className={`font-bold ${pnlText(p.net)}`}>{p.net.toLocaleString()}원 ({p.returnRate.toFixed(2)}%)</span> · 수수료 {p.fee.toLocaleString()}원</span> : "체결을 입력하면 손익 미리보기"}
+                  {p ? <span className="tnum">순손익 <span className={`font-bold ${pnlText(p.net)}`}>{p.net.toLocaleString()}원</span> · {p.points.toFixed(2)}pt · 수수료 {p.fee.toLocaleString()}원</span> : "체결을 입력하면 손익 미리보기"}
                 </span>
                 <button type="button" className="text-xs text-zinc-400 hover:text-zinc-600 underline ml-auto" onClick={() => setRows((prev) => (prev.length <= 1 ? prev : prev.filter((x) => x.key !== r.key)))}>매매삭제</button>
               </div>
